@@ -48,6 +48,8 @@ function classify(name) {
   if (/feiertag/.test(n)) return { cat: 'FEIERTAG', target: 'auto-Kalender (nicht importieren)' }
   if (/\bkrank/.test(n)) return { cat: 'SYSTEM', target: 'Krank' }
   if (/\burlaub/.test(n)) return { cat: 'SYSTEM', target: 'Urlaub' }
+  if (/kurzarbeit/.test(n)) return { cat: 'SYSTEM', target: 'Kurzarbeit' }
+  if (n === 'uni') return { cat: 'SYSTEM', target: 'Admin' }
   if (/(^|\b)(frei|freier? tag|frei aus|ausgleich)/.test(n)) return { cat: 'FREI', target: 'Frei' }
   return null // echtes Projekt (Kandidat)
 }
