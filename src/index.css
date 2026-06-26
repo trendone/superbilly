@@ -8,6 +8,8 @@
   --ok-fg: #047857;
   --pending-bg: #fff7ed;
   --pending-fg: #c2410c;
+  --red: #ef4444;
+  --border: #e2e8f0;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -83,3 +85,87 @@ code {
   border-radius: 6px;
   font-size: 12px;
 }
+
+/* ───────────── App-Layout & Wochenraster ───────────── */
+.app { min-height: 100vh; }
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 22px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.brand { font-size: 20px; font-weight: 700; color: var(--accent); }
+.brand-sub { font-size: 13px; color: var(--muted); }
+
+.main { padding: 18px 22px; }
+
+.grid-wrap { max-width: 1200px; margin: 0 auto; }
+
+.week-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.week-nav button {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.week-nav button:hover { background: #f1f5f9; }
+.week-nav .today { color: var(--accent); font-weight: 600; }
+.week-label { font-weight: 600; min-width: 180px; text-align: center; }
+
+.grid {
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.gh {
+  background: #f8fafc;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.gh span { color: var(--muted); font-weight: 400; }
+.gh.corner { color: var(--muted); }
+.gh.is-today { background: #eef2ff; }
+
+.gc { background: var(--card); padding: 8px; min-height: 64px; }
+.gc.cell.is-today { background: #fafaff; }
+
+.emp { display: flex; flex-direction: column; gap: 4px; }
+.emp-name { font-weight: 600; font-size: 14px; }
+.emp-cap { font-size: 11px; color: var(--muted); }
+.cap-bar {
+  height: 5px;
+  background: #eef2f7;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cap-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.bk {
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 5px 7px;
+  margin-bottom: 5px;
+}
+.bk-name { font-size: 12px; font-weight: 600; line-height: 1.2; }
+.bk-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }

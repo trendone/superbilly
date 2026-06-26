@@ -252,6 +252,11 @@ Kein Voll-Import wie heute (der erzeugte 189 „Projekte" mit Duplikaten, Müll 
 754 „Frei"-Einträgen). Stattdessen ein **gestufter Import mit Validierung und
 manueller Freigabe**. Quelle ist die Excel (`BILLY LIST …xlsx`, Blätter Jan–Dez).
 
+> **Zeitpunkt:** Der *echte* Import läuft erst **zum Go-Live** (Roadmap-Schritt vG).
+> Die **Validierung (Stufe 1+2) ist bereits erledigt** (`tools/import/analyze.mjs`
+> erzeugt den Report). Während der Entwicklung wird gegen ein **Dev-Seed**
+> (`supabase/seed.sql`) gearbeitet, nicht gegen Echtdaten.
+
 ### 5.1 Grundprinzip
 Jede Stufe erzeugt zuerst einen **Validierungs-Report** (Liste mit Auffälligkeiten
 + Vorschlägen). Erst nach **manueller Freigabe/Korrektur** wird tatsächlich in
@@ -311,31 +316,38 @@ wöchentlicher Digest.
 
 ## 7. Versionsplanung / Roadmap
 
-Das **Fundament steht bewusst zuerst** (solide/sichere Basis von Anfang an); das
-Rechnungs-/Meilenstein-Dashboard ist das erste Feature direkt darauf.
+Das **Fundament steht bewusst zuerst**. **Wichtig:** Der *echte* Datenimport
+erfolgt erst **zum Go-Live** (Schritt vG) – bis dahin wird gegen ein **Dev-Seed**
+(Beispieldaten) entwickelt. Grund: saubere Quellen (Personio/Zoho) kommen ohnehin
+später, und Daten lassen sich erst sinnvoll prüfen, wenn die Oberfläche steht.
 
-### v1.1 – Fundament: Neuaufbau auf Supabase ⭐
-**Ziel:** solide, sichere, relationale Basis + saubere Erstdaten.
-- Postgres-Schema (Abschnitt 3) + RLS-Policies (4.6)
-- Supabase Auth mit SSO (@trendone) – ersetzt das Client-Passwort
-- Realtime-Anbindung (ersetzt `onSnapshot`)
-- Frontend auf `@supabase/supabase-js` neu aufbauen (Firebase-SDK raus)
-- **Gestufte Erst-Befüllung aus Excel** mit Validierung/Dedup (Abschnitt 5) –
-  **keine** Migration der alten Firestore-Daten
-- Edge-Functions-Gerüst + Vault + `pg_cron` aktivieren
-- Voraussetzungen: keine · Risiko: mittel (Import-Qualität, RLS sorgfältig testen)
+### v1.1 – Fundament: Neuaufbau auf Supabase ✅ (weitgehend erledigt)
+- Postgres-Schema (Abschnitt 3) + RLS-Policies (4.6) – steht
+- TS-Typen generiert, Frontend auf `@supabase/supabase-js` – steht
+- System-Kategorien Urlaub/Krank/Admin/Frei/Kurzarbeit – steht
+- Import-**Validierung** (Stufe 1+2) als Vorbereitung – steht (Analyzer)
+- **Dev-Seed** (Beispieldaten) für die Weiterentwicklung
+- offen: Auth (SSO bevorzugt, sonst E-Mail) → danach DEV-anon-Policies entfernen
+- Risiko: mittel
 
-### v1.2 – Rechnungs- & Meilenstein-Dashboard ⭐ (erstes Feature)
-**Ziel:** sofortiger Mehrwert „wann muss welche Rechnung raus".
-- `milestones` nutzen; Projekt-Felder `client/status/budget_eur/end_date` pflegbar
-- Dashboard mit Fälligkeits-Ampel (diese Woche / überfällig / nächste 30 Tage)
-- CSV-Export der Auswertung
+### v1.2 – Buchungsraster (operativer Kern) ⭐
+**Ziel:** das Herzstück wie in der alten App, auf Supabase.
+- Wochenansicht (Mitarbeiter × Mo–Fr), Buchungskarten, Projektfarben, ½/1 Tag
+- Wochennavigation, Kapazität/Auslastung pro Mitarbeiter
+- Buchungen anlegen/bearbeiten/löschen (Schreibzugriff mit Auth)
+- Realtime (Live-Updates über mehrere Nutzer)
+- Voraussetzungen: v1.1 · Risiko: mittel
+
+### v1.3 – Rechnungs- & Meilenstein-Dashboard
+**Ziel:** Mehrwert „wann muss welche Rechnung raus".
+- `milestones`; Projekt-Felder `client/status/budget_eur/end_date` pflegbar
+- Fälligkeits-Ampel (diese Woche / überfällig / nächste 30 Tage), CSV-Export
 - **Quick Win:** deutsche Feiertage als nicht buchbar (automatischer Kalender)
-- Voraussetzungen: v1.1 · Risiko: gering
+- Voraussetzungen: v1.2 · Risiko: gering
 
 ### v2.0 – Erinnerungen (Mail/Teams)
-- `send-digest` nutzt Meilensteine (v1.2) + Auslastung
-- Voraussetzungen: v1.1 + v1.2 · Risiko: gering
+- `send-digest` nutzt Meilensteine (v1.3) + Auslastung
+- Voraussetzungen: v1.1 + v1.3 · Risiko: gering
 
 ### v2.1 – Zoho-Auftragsimport
 - `sync-zoho` (Pull) + `zoho-webhook` (Closed Won), Mapping (4.4), Idempotenz
@@ -348,16 +360,24 @@ Rechnungs-/Meilenstein-Dashboard ist das erste Feature direkt darauf.
 ### v3.0 – PM-Kern: Arbeitspakete
 - `workpackages`, Buchungen hängen an Paketen, Soll/Ist pro Paket
 - Projekt-Detail-/Gantt-Ansicht
-- Voraussetzungen: v1.1 · Risiko: mittel-hoch (UI-Umbau)
+- Voraussetzungen: v1.2 · Risiko: mittel-hoch (UI-Umbau)
 
 ### v3.1 – Controlling
 - Profitabilität pro Projekt/Kunde (Zoho-Umsatz − Kosten), Ist-Zeiterfassung
 - Voraussetzungen: v2.1, v3.0 · Risiko: mittel
 
 ### v4.0 – Personio-Spiegelung (bewusst nach hinten priorisiert)
-- read-only, technisch unabhängig; Urlaub/Krank bis dahin manuell wie heute
+- read-only, technisch unabhängig; Urlaub/Krank bis dahin manuell
 - `sync-personio`, E-Mail-Mapping + Mapping-Admin-View, gesperrte Buchungen
 - Voraussetzungen: v1.1 · Risiko: mittel (Mapping, DSGVO mit HR)
+
+### vG – Go-Live-Datenimport (echte Daten) 🏁
+**Ziel:** einmalige saubere Erst-Befüllung kurz vor Produktivstart.
+- echter, validierter Import über die Analyzer-Logik (Stufe 1+2, Abschnitt 5)
+- Quelle: bereinigte Liste bzw. Personio (Mitarbeiter+E-Mails) / Zoho (Projekte)
+- E-Mails ergänzt, Fuzzy-Merges final bestätigt, Müll/Sonderfälle gemappt
+- **Entscheidung dann:** Historie übernehmen vs. frisch ab Go-Live starten
+- Voraussetzungen: v1.2 (zum Prüfen), idealerweise Personio/Zoho verfügbar
 
 ### v5 – Komfort & Reichweite (laufend)
 - Skill-Matrix, Projekt-Templates, Kapazitäts-Heatmap
@@ -365,12 +385,12 @@ Rechnungs-/Meilenstein-Dashboard ist das erste Feature direkt darauf.
 
 ### Abhängigkeitsdiagramm
 ```
-v1.1 (Fundament/Supabase) ─┬─▶ v1.2 (Dashboard) ─▶ v2.0 (Erinnerungen)
-                           ├─▶ v2.1 (Zoho) ─▶ v2.2 (Pipeline-Forecast)
-                           ├─▶ v3.0 (Arbeitspakete) ─▶ v3.1 (Controlling)
-                           │                              ▲
-                           │        v2.1 (Zoho) ──────────┘
-                           └─▶ v4.0 (Personio)   ← unabhängig, bewusst nach hinten
+v1.1 (Fundament, +Dev-Seed) ─┬─▶ v1.2 (Buchungsraster) ─▶ v1.3 (Dashboard) ─▶ v2.0 (Erinnerungen)
+                             ├─▶ v2.1 (Zoho) ─▶ v2.2 (Pipeline-Forecast)
+                             ├─▶ v3.0 (Arbeitspakete) ─▶ v3.1 (Controlling)
+                             └─▶ v4.0 (Personio)   ← unabhängig
+
+vG (Go-Live-Import) ⟵ echte Daten erst hier; nutzt v1.2 zum Prüfen + Quellen (Personio/Zoho)
 ```
 
 ---
