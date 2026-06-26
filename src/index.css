@@ -66,6 +66,11 @@ h1 {
   color: var(--pending-fg);
 }
 
+.status.err {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .hint {
   margin: 20px 0 0;
   font-size: 13px;
