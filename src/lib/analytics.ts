@@ -1,9 +1,10 @@
 // Auswertungs-Datenschicht: Aggregationen für Projekt- und Mitarbeiter-Auslastung.
-// Spiegelt die alte Billy-„auswertung.html", aber gerechnet auf dem Supabase-Modell:
-//  - produktive Projekte  = projects.is_system = false  (haben budget_days)
+// Gerechnet auf dem Supabase-Modell:
+//  - produktive Projekte  = projects.is_system = false  (haben budget_days/eur)
 //  - Abwesenheit          = System-Kategorien Urlaub / Krank / Frei / Kurzarbeit
-//  - interne Zeit (Admin) = System-Kategorie, separat ausgewiesen (kein „Abwesend")
-// Periodische Wochenstunden via employee_hours_periods, Feiertage via holidays.ts.
+//  - interne Zeit (Admin) = System-Kategorie, separat ausgewiesen
+// Periodische Wochenstunden via employee_hours_periods, Feiertage via holidays.ts,
+// Fakturastand via milestones, Ist-Stunden via actuals.
 
 import { supabase } from './supabase'
 import type { Database } from './database.types'
@@ -14,56 +15,67 @@ export type Employee = Database['public']['Tables']['employees']['Row']
 export type Project = Database['public']['Tables']['projects']['Row']
 export type Booking = Database['public']['Tables']['bookings']['Row']
 export type HoursPeriod = Database['public']['Tables']['employee_hours_periods']['Row']
+export type Milestone = Database['public']['Tables']['milestones']['Row']
+export type Actual = Database['public']['Tables']['actuals']['Row']
 
 // System-Kategorien, die echte Abwesenheit darstellen (mindern die Verfügbarkeit).
 export const ABSENCE_CATEGORIES = ['Urlaub', 'Krank', 'Frei', 'Kurzarbeit'] as const
+
+// Stunden pro „Personentag" (für die Umrechnung Ist-Stunden → Tage).
+const HOURS_PER_DAY = 8
 
 export interface AnalyticsData {
   employees: Employee[]
   projects: Project[]
   bookings: Booking[]
   hoursPeriods: HoursPeriod[]
+  milestones: Milestone[]
+  actuals: Actual[]
 }
 
 /** Lädt alle Daten, die beide Auswertungen brauchen, in einem Rutsch. */
 export async function fetchAnalytics(): Promise<AnalyticsData> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
 
-  const [emp, proj, book, periods] = await Promise.all([
+  const [emp, proj, book, periods, ms, act] = await Promise.all([
     supabase.from('employees').select('*').eq('active', true).order('name'),
     supabase.from('projects').select('*').order('name'),
     supabase.from('bookings').select('*'),
     supabase.from('employee_hours_periods').select('*'),
+    supabase.from('milestones').select('*'),
+    supabase.from('actuals').select('*'),
   ])
 
   if (emp.error) throw emp.error
   if (proj.error) throw proj.error
   if (book.error) throw book.error
   if (periods.error) throw periods.error
+  if (ms.error) throw ms.error
+  if (act.error) throw act.error
 
   return {
     employees: emp.data,
     projects: proj.data,
     bookings: book.data,
     hoursPeriods: periods.data,
+    milestones: ms.data,
+    actuals: act.data,
   }
 }
 
 // ── Helfer ───────────────────────────────────────────────────────────────
 
+const round1 = (n: number) => Math.round(n * 10) / 10
+const todayISO = () => toISODate(new Date())
+
 /** Geltende Wochenstunden für ein Datum (jüngste Periode ≤ Datum, sonst Default). */
-export function weeklyHoursForDate(
-  emp: Employee,
-  periods: HoursPeriod[],
-  iso: string,
-): number {
-  let hours = Number(emp.weekly_hours)
+export function weeklyHoursForDate(emp: Employee, periods: HoursPeriod[], iso: string): number {
   let best: HoursPeriod | null = null
   for (const p of periods) {
     if (p.employee_id !== emp.id) continue
     if (p.valid_from <= iso && (!best || p.valid_from > best.valid_from)) best = p
   }
-  return best ? Number(best.weekly_hours) : hours
+  return best ? Number(best.weekly_hours) : Number(emp.weekly_hours)
 }
 
 /** Zählt Arbeitstage (Mo–Fr) ohne Feiertage im Bereich [startISO..endISO] inkl. */
@@ -84,31 +96,82 @@ const isAbsence = (p: Project | undefined) =>
 
 // ── Projekt-Auswertung ─────────────────────────────────────────────────────
 
+export type Health = 'over' | 'tight' | 'ok' | 'none'
+
 export interface ProjectStat {
   project: Project
   bookedDays: number
+  bookedToDateDays: number
+  actualDays: number // aus actuals (Ist), 0 solange keine Zeiterfassung
   budgetDays: number | null
   diffDays: number | null
+  budgetPct: number | null // gebucht / Budget
+  health: Health
+  forecast: string // kurze Prognose/Status-Phrase
+  budgetEur: number | null
+  invoicedEur: number // gestellt + bezahlt
+  paidEur: number
+  openEur: number // budget_eur − fakturiert (falls budget bekannt)
   rangeStart: string | null
   rangeEnd: string | null
   employeeNames: string[]
 }
 
 /** Gebuchte Tage je Buchung = Arbeitstage (ohne Feiertage) × Tagessatz (budget). */
-function bookingDays(b: Booking): number {
-  return workdaysNoHolidays(b.start_date, b.end_date) * Number(b.budget)
+function bookingDays(b: Booking, untilISO?: string): number {
+  const end = untilISO && b.end_date > untilISO ? untilISO : b.end_date
+  if (b.start_date > end) return 0
+  return workdaysNoHolidays(b.start_date, end) * Number(b.budget)
 }
 
-/** Aggregiert produktive (Nicht-System-)Projekte: gebucht/Budget/Diff/Zeitraum/MA. */
+function healthOf(booked: number, budget: number | null): Health {
+  if (budget == null || budget === 0) return 'none'
+  const r = booked / budget
+  if (r > 1.0) return 'over'
+  if (r >= 0.9) return 'tight'
+  return 'ok'
+}
+
+/** Aggregiert produktive (Nicht-System-)Projekte. */
 export function projectStats(data: AnalyticsData): ProjectStat[] {
   const empName = new Map(data.employees.map((e) => [e.id, e.name]))
+  const bookingProject = new Map(data.bookings.map((b) => [b.id, b.project_id]))
+  const today = todayISO()
+
+  // Ist-Stunden je Projekt aus actuals (über booking_id → project_id).
+  const actualHByProject = new Map<string, number>()
+  for (const a of data.actuals) {
+    const pid = a.booking_id ? bookingProject.get(a.booking_id) : undefined
+    if (!pid) continue
+    actualHByProject.set(pid, (actualHByProject.get(pid) ?? 0) + Number(a.hours))
+  }
+
   const projects = data.projects.filter((p) => !p.is_system)
 
   return projects.map((project) => {
     const tasks = data.bookings.filter((b) => b.project_id === project.id)
-    const bookedDays = tasks.reduce((sum, b) => sum + bookingDays(b), 0)
+    const bookedDays = tasks.reduce((s, b) => s + bookingDays(b), 0)
+    const bookedToDateDays = tasks.reduce((s, b) => s + bookingDays(b, today), 0)
     const budgetDays = project.budget_days
     const diffDays = budgetDays != null ? budgetDays - bookedDays : null
+    const budgetPct =
+      budgetDays != null && budgetDays > 0 ? Math.round((bookedDays / budgetDays) * 100) : null
+    const health = healthOf(bookedDays, budgetDays)
+
+    // Fakturastand aus Meilensteinen.
+    let invoicedEur = 0
+    let paidEur = 0
+    for (const m of data.milestones) {
+      if (m.project_id !== project.id || m.amount_eur == null) continue
+      if (m.invoice_status === 'bezahlt') {
+        paidEur += Number(m.amount_eur)
+        invoicedEur += Number(m.amount_eur)
+      } else if (m.invoice_status === 'gestellt') {
+        invoicedEur += Number(m.amount_eur)
+      }
+    }
+    const budgetEur = project.budget_eur
+    const openEur = budgetEur != null ? Math.max(0, budgetEur - invoicedEur) : 0
 
     let rangeStart: string | null = null
     let rangeEnd: string | null = null
@@ -117,15 +180,32 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       if (rangeEnd === null || b.end_date > rangeEnd) rangeEnd = b.end_date
     }
 
+    // Prognose/Status-Phrase.
+    let forecast = '–'
+    if (project.status === 'abgeschlossen') forecast = 'abgeschlossen'
+    else if (project.end_date && project.end_date < today) forecast = 'überfällig'
+    else if (health === 'over') forecast = `${Math.abs(diffDays ?? 0)} T über Budget`
+    else if (health === 'tight') forecast = 'Budget fast erschöpft'
+    else if (health === 'ok') forecast = 'im Plan'
+
     const employeeNames = [...new Set(tasks.map((b) => b.employee_id))]
       .map((id) => empName.get(id) ?? '?')
       .sort()
 
     return {
       project,
-      bookedDays: Math.round(bookedDays * 10) / 10,
+      bookedDays: round1(bookedDays),
+      bookedToDateDays: round1(bookedToDateDays),
+      actualDays: round1((actualHByProject.get(project.id) ?? 0) / HOURS_PER_DAY),
       budgetDays,
-      diffDays: diffDays != null ? Math.round(diffDays * 10) / 10 : null,
+      diffDays: diffDays != null ? round1(diffDays) : null,
+      budgetPct,
+      health,
+      forecast,
+      budgetEur,
+      invoicedEur: Math.round(invoicedEur),
+      paidEur: Math.round(paidEur),
+      openEur: Math.round(openEur),
       rangeStart,
       rangeEnd,
       employeeNames,
@@ -157,84 +237,161 @@ export function monthWindow(today: Date, from: number, to: number): MonthWindow[
   return out
 }
 
+/** Alle 12 Monate eines Kalenderjahres. */
+export function yearWindow(year: number): MonthWindow[] {
+  return MONTH_ABBR.map((label, month) => ({ year, month, label }))
+}
+
 export interface MonthStat {
+  year: number
+  month: number
   label: string
   pct: number // produktive Auslastung in %
-  bookedHours: number // produktive Stunden
-  netCapacityHours: number // verfügbare Stunden (Kapazität − Abwesenheit)
+  bookedDays: number // produktive Tage
+  netAvailDays: number // verfügbare FTE-Tage (Kapazität − Abwesenheit)
   absenceDays: number
-  absenceHours: number
   adminDays: number
   projectNames: string[]
 }
 
 /**
- * Monats-Auslastung eines Mitarbeiters – tagesgenau, damit unterjährig
- * wechselnde Wochenstunden korrekt zählen (wie in der alten App).
+ * Monats-Auslastung eines Mitarbeiters – tagesgenau (FTE-Basis), damit
+ * unterjährig wechselnde Wochenstunden korrekt zählen.
  */
-export function employeeMonthStats(
-  emp: Employee,
-  data: AnalyticsData,
-  months: MonthWindow[],
-): MonthStat[] {
+function statForMonth(emp: Employee, data: AnalyticsData, m: MonthWindow): MonthStat {
   const projById = new Map(data.projects.map((p) => [p.id, p]))
-  const empBookings = data.bookings.filter((b) => b.employee_id === emp.id)
+  const firstDay = new Date(m.year, m.month, 1)
+  const lastDay = new Date(m.year, m.month + 1, 0)
+  const monthStart = toISODate(firstDay)
+  const monthEnd = toISODate(lastDay)
 
-  return months.map((m) => {
-    const firstDay = new Date(m.year, m.month, 1)
-    const lastDay = new Date(m.year, m.month + 1, 0)
-    const monthStart = toISODate(firstDay)
-    const monthEnd = toISODate(lastDay)
+  const monthBookings = data.bookings.filter(
+    (b) => b.employee_id === emp.id && b.end_date >= monthStart && b.start_date <= monthEnd,
+  )
 
-    const monthBookings = empBookings.filter(
-      (b) => b.end_date >= monthStart && b.start_date <= monthEnd,
-    )
+  let availDaysFTE = 0
+  let bookedDays = 0
+  let absenceDays = 0
+  let adminDays = 0
+  const projSet = new Set<string>()
 
-    let capacityH = 0
-    let bookedH = 0
-    let absenceH = 0
-    let absenceDays = 0
-    let adminDays = 0
-    const projSet = new Set<string>()
-
-    const cur = new Date(firstDay)
-    while (cur <= lastDay) {
-      const dow = cur.getDay()
-      const iso = toISODate(cur)
-      if (dow >= 1 && dow <= 5 && !holidayName(iso)) {
-        const hoursPerDay = weeklyHoursForDate(emp, data.hoursPeriods, iso) / 5
-        capacityH += hoursPerDay
-        for (const b of monthBookings) {
-          if (b.start_date > iso || b.end_date < iso) continue
-          const p = projById.get(b.project_id)
-          const share = Number(b.budget)
-          if (isAbsence(p)) {
-            absenceDays += share
-            absenceH += share * hoursPerDay
-          } else if (p && p.is_system) {
-            // Admin u. ä. – interne Zeit, separat
-            adminDays += share
-          } else {
-            bookedH += share * hoursPerDay
-            if (p) projSet.add(p.name)
-          }
+  const cur = new Date(firstDay)
+  while (cur <= lastDay) {
+    const dow = cur.getDay()
+    const iso = toISODate(cur)
+    if (dow >= 1 && dow <= 5 && !holidayName(iso)) {
+      availDaysFTE += weeklyHoursForDate(emp, data.hoursPeriods, iso) / 40
+      for (const b of monthBookings) {
+        if (b.start_date > iso || b.end_date < iso) continue
+        const p = projById.get(b.project_id)
+        const share = Number(b.budget)
+        if (isAbsence(p)) absenceDays += share
+        else if (p && p.is_system) adminDays += share
+        else {
+          bookedDays += share
+          if (p) projSet.add(p.name)
         }
       }
-      cur.setDate(cur.getDate() + 1)
     }
+    cur.setDate(cur.getDate() + 1)
+  }
 
-    const netCapacityHours = capacityH - absenceH
-    const pct = netCapacityHours > 0 ? Math.round((bookedH / netCapacityHours) * 100) : 0
+  const netAvailDays = Math.max(0, availDaysFTE - absenceDays)
+  const pct = netAvailDays > 0 ? Math.round((bookedDays / netAvailDays) * 100) : 0
 
-    return {
-      label: m.label,
-      pct,
-      bookedHours: Math.round(bookedH * 10) / 10,
-      netCapacityHours: Math.round(netCapacityHours * 10) / 10,
-      absenceDays: Math.round(absenceDays * 10) / 10,
-      absenceHours: Math.round(absenceH * 10) / 10,
-      adminDays: Math.round(adminDays * 10) / 10,
-      projectNames: [...projSet].sort(),
+  return {
+    year: m.year,
+    month: m.month,
+    label: m.label,
+    pct,
+    bookedDays: round1(bookedDays),
+    netAvailDays: round1(netAvailDays),
+    absenceDays: round1(absenceDays),
+    adminDays: round1(adminDays),
+    projectNames: [...projSet].sort(),
+  }
+}
+
+export function employeeMonthStats(emp: Employee, data: AnalyticsData, months: MonthWindow[]): MonthStat[] {
+  return months.map((m) => statForMonth(emp, data, m))
+}
+
+/** Zusammenfassung über mehrere Monate (für die Σ-Spalte). */
+export function summarize(stats: MonthStat[]): { pct: number; bookedDays: number; netAvailDays: number } {
+  const bookedDays = stats.reduce((s, m) => s + m.bookedDays, 0)
+  const netAvailDays = stats.reduce((s, m) => s + m.netAvailDays, 0)
+  return {
+    pct: netAvailDays > 0 ? Math.round((bookedDays / netAvailDays) * 100) : 0,
+    bookedDays: round1(bookedDays),
+    netAvailDays: round1(netAvailDays),
+  }
+}
+
+export interface TeamKpis {
+  monthLabel: string
+  avgPct: number
+  overloaded: number // Mitarbeiter mit > 100 %
+  underloaded: number // Mitarbeiter mit < 70 %
+  freeDays: number // freie Kapazität in PT
+}
+
+/** Team-Kennzahlen für den aktuellen Kalendermonat. */
+export function teamKpis(data: AnalyticsData, today = new Date()): TeamKpis {
+  const m = monthWindow(today, 0, 0)[0]
+  const stats = data.employees.map((e) => statForMonth(e, data, m))
+  const withCap = stats.filter((s) => s.netAvailDays > 0)
+  const avgPct = withCap.length
+    ? Math.round(withCap.reduce((s, x) => s + x.pct, 0) / withCap.length)
+    : 0
+  const freeDays = stats.reduce((s, x) => s + Math.max(0, x.netAvailDays - x.bookedDays), 0)
+  return {
+    monthLabel: m.label,
+    avgPct,
+    overloaded: stats.filter((s) => s.pct > 100).length,
+    underloaded: withCap.filter((s) => s.pct < 70).length,
+    freeDays: round1(freeDays),
+  }
+}
+
+export interface DetailRow {
+  name: string
+  color: string | null
+  days: number
+  kind: 'project' | 'absence' | 'admin'
+}
+
+/** Aufschlüsselung eines Mitarbeiter-Monats nach Projekten/Kategorien (Drilldown). */
+export function monthDetail(emp: Employee, data: AnalyticsData, year: number, month: number): DetailRow[] {
+  const projById = new Map(data.projects.map((p) => [p.id, p]))
+  const firstDay = new Date(year, month, 1)
+  const lastDay = new Date(year, month + 1, 0)
+  const monthStart = toISODate(firstDay)
+  const monthEnd = toISODate(lastDay)
+
+  const acc = new Map<string, DetailRow>()
+  const monthBookings = data.bookings.filter(
+    (b) => b.employee_id === emp.id && b.end_date >= monthStart && b.start_date <= monthEnd,
+  )
+
+  const cur = new Date(firstDay)
+  while (cur <= lastDay) {
+    const dow = cur.getDay()
+    const iso = toISODate(cur)
+    if (dow >= 1 && dow <= 5 && !holidayName(iso)) {
+      for (const b of monthBookings) {
+        if (b.start_date > iso || b.end_date < iso) continue
+        const p = projById.get(b.project_id)
+        const name = p?.name ?? '—'
+        const kind: DetailRow['kind'] = isAbsence(p) ? 'absence' : p?.is_system ? 'admin' : 'project'
+        const row = acc.get(name) ?? { name, color: p?.color ?? null, days: 0, kind }
+        row.days += Number(b.budget)
+        acc.set(name, row)
+      }
     }
-  })
+    cur.setDate(cur.getDate() + 1)
+  }
+
+  return [...acc.values()]
+    .map((r) => ({ ...r, days: round1(r.days) }))
+    .sort((a, b) => b.days - a.days)
 }

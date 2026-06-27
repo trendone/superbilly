@@ -497,8 +497,17 @@ code {
 
 /* ───────────── Auswertung ───────────── */
 .analytics {
-  max-width: 1000px;
+  max-width: 1180px;
   margin: 0 auto;
+}
+.ana-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.ana-head .sub-tabs {
+  margin-bottom: 0;
 }
 .sub-tabs {
   display: flex;
@@ -580,4 +589,143 @@ code {
 }
 .muted {
   color: var(--muted);
+}
+
+/* Text-Helfer (global, außerhalb der Tabelle) */
+.dim { color: var(--muted); }
+.red { color: var(--red); }
+.green { color: var(--green); }
+.amber { color: var(--amber); }
+
+/* Toolbar (Filter/Sortierung/Zeitraum) */
+.ana-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.field-inline {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 13px;
+  background: var(--card);
+  color: var(--text);
+}
+.year-nav { display: inline-flex; align-items: center; gap: 8px; }
+.year-nav button {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+}
+.year-nav span { font-weight: 600; min-width: 38px; text-align: center; }
+
+/* Budget-Auslastungsbalken in der Projekt-Tabelle */
+.ana-table .bar-cell { min-width: 180px; }
+.ba-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #eef2f7;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+.ba-bar span { display: block; height: 100%; background: var(--accent); }
+
+/* Prognose-/Health-Badge */
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #f1f5f9;
+  color: var(--muted);
+}
+.badge.red { background: #fee2e2; color: #991b1b; }
+.badge.amber { background: #fef3c7; color: #92400e; }
+.badge.green { background: #dcfce7; color: #166534; }
+
+.ana-table tfoot td {
+  border-top: 2px solid var(--border);
+  font-weight: 600;
+  background: #f8fafc;
+}
+
+/* Heatmap */
+.heat-scroll { overflow-x: auto; }
+.heat {
+  border-collapse: separate;
+  border-spacing: 3px;
+  font-size: 12px;
+}
+.heat thead th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 2px 4px;
+  text-align: center;
+}
+.heat .heat-name {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--bg);
+  z-index: 1;
+  padding-right: 12px;
+  white-space: nowrap;
+}
+.heat tbody .heat-name { font-weight: 600; font-size: 13px; }
+.heat tbody .heat-name .dim { font-size: 11px; font-weight: 400; }
+.heat-cell { padding: 0; }
+.heat-btn {
+  width: 100%;
+  min-width: 52px;
+  border: none;
+  border-radius: 7px;
+  padding: 9px 4px;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 0.05s;
+}
+.heat-btn:hover { filter: brightness(0.96); }
+.heat-btn.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+.heat-sum { font-weight: 700; padding-left: 10px; }
+.heat-legend { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.heat-legend i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-left: 8px;
+}
+
+/* Drilldown-Panel */
+.drill {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--card);
+}
+.drill-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.drill-close {
+  margin-left: auto;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 15px;
 }
