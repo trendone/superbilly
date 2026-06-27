@@ -265,6 +265,7 @@ function ProjectsView({
       {projects.length === 0 ? (
         <p className="muted">Keine Projekte für diesen Filter.</p>
       ) : (
+        <div className="table-scroll">
         <table className="ana-table">
           <thead>
             <tr>
@@ -331,6 +332,7 @@ function ProjectsView({
             </tr>
           </tfoot>
         </table>
+        </div>
       )}
       <p className="hint">Ist-Tage aus erfassten Stunden (à 8 h) – 0, solange keine Zeiterfassung vorliegt.</p>
     </section>

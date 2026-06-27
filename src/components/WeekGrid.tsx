@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { fetchWeek, type Booking, type Project, type WeekData } from '../lib/data'
 import { addDays, dayLabels, formatDay, isoWeek, mondayOf, toISODate } from '../lib/dates'
 import { holidayName } from '../lib/holidays'
@@ -101,7 +101,8 @@ export default function WeekGrid() {
       {loading && !data && <div className="status pending">… lädt</div>}
 
       {data && (
-        <div className="grid" style={{ gridTemplateColumns: `220px repeat(${days.length}, 1fr)` }}>
+        <div className="grid-scroll">
+        <div className="grid" style={{ '--cols': days.length } as unknown as CSSProperties}>
           <div className="gh corner">Mitarbeiter</div>
           {days.map((d, i) => {
             const hol = holidayName(toISODate(d))
@@ -169,6 +170,7 @@ export default function WeekGrid() {
               </Fragment>
             )
           })}
+        </div>
         </div>
       )}
 

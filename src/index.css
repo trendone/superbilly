@@ -197,14 +197,27 @@ code {
 .gh.week-sep, .gc.week-sep { border-left: 2px solid #cbd5e1; }
 .emp-abs { color: var(--amber); }
 
+.grid-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .grid {
   display: grid;
+  grid-template-columns: var(--name-w, 220px) repeat(var(--cols), minmax(var(--col-min, 0px), 1fr));
   gap: 1px;
   background: var(--border);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
 }
+/* Mitarbeiter-Spalte beim horizontalen Scrollen fixieren. */
+.gh.corner,
+.gc.emp {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.gh.corner { z-index: 3; }
 .gh {
   background: #f8fafc;
   padding: 10px 12px;
@@ -728,4 +741,58 @@ code {
   cursor: pointer;
   color: var(--muted);
   font-size: 15px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ───────────── Mobile (≤ 760px) ───────────── */
+@media (max-width: 760px) {
+  /* Topbar: Brand + Abmelden oben, Tabs als scrollbare Zeile darunter */
+  .topbar {
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    gap: 6px 10px;
+  }
+  .brand-sub,
+  .user-email { display: none; }
+  .topbar-right { margin-left: auto; }
+  .tabs {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 2px;
+  }
+  .tab { white-space: nowrap; padding: 7px 12px; }
+
+  .main { padding: 12px; }
+
+  /* Planungsraster: schmale, fixierte MA-Spalte + horizontal scrollende Tage */
+  .grid {
+    --name-w: 124px;
+    --col-min: 116px;
+  }
+  .gc.emp,
+  .gh.corner {
+    box-shadow: 2px 0 4px rgba(15, 23, 42, 0.06);
+  }
+  .gc { padding: 6px; min-height: 56px; }
+  .gh { padding: 8px 6px; font-size: 12px; }
+  .emp-name { font-size: 13px; }
+
+  /* Week-Nav darf umbrechen, Toggle rutscht in neue Zeile */
+  .week-nav { flex-wrap: wrap; gap: 8px; }
+  .week-label { min-width: 0; flex: 1 1 100%; order: -1; }
+  .week-toggle { margin-left: 0; }
+
+  /* Auswertung */
+  .analytics { max-width: 100%; }
+  .ana-head { flex-wrap: wrap; gap: 10px; }
+  .table-scroll .ana-table { min-width: 640px; }
+  .heat-btn { min-width: 44px; padding: 8px 2px; }
+  .heat .heat-name { min-width: 96px; }
 }
