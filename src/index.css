@@ -226,3 +226,256 @@ code {
 }
 .bk-name { font-size: 12px; font-weight: 600; line-height: 1.2; }
 .bk-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+/* ───────────── Tabs (Topbar-Navigation) ───────────── */
+.tabs { display: flex; gap: 4px; margin-left: 18px; align-self: center; }
+.tab {
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tab:hover { background: #f1f5f9; }
+.tab.active { background: #eef2ff; color: var(--accent); }
+
+/* ───────────── Rechnungs-/Meilenstein-Dashboard ───────────── */
+.dash { max-width: 980px; margin: 0 auto; padding: 22px; }
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.kpi {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.kpi-val { font-size: 22px; font-weight: 700; }
+.kpi-alert { border-color: var(--red); background: #fff5f5; }
+.kpi-alert .kpi-val { color: var(--red); }
+
+.dash-actions { display: flex; gap: 10px; margin-bottom: 16px; }
+
+.ms-group { margin-bottom: 20px; }
+.ms-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+.ms-group-title .dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--muted);
+}
+.ms-group-title.tone-red .dot { background: var(--red); }
+.ms-group-title.tone-orange .dot { background: #f97316; }
+.ms-group-title.tone-amber .dot { background: #f59e0b; }
+.ms-group-title.tone-green .dot { background: #10b981; }
+.ms-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.ms-list { display: flex; flex-direction: column; gap: 6px; }
+.ms-row {
+  display: grid;
+  grid-template-columns: 4px 1fr 130px 110px 110px 64px;
+  align-items: center;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.ms-color { width: 4px; height: 34px; border-radius: 3px; }
+.ms-main { min-width: 0; }
+.ms-title { font-size: 14px; font-weight: 600; }
+.ms-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.ms-due { font-size: 13px; text-align: right; }
+.ms-rel { font-size: 11px; color: var(--muted); }
+.ms-rel.is-over { color: var(--red); font-weight: 600; }
+.ms-amount { font-size: 14px; font-weight: 600; text-align: right; }
+
+.ms-status {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--card);
+}
+.ms-status.st-offen { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+.ms-status.st-gestellt { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.ms-status.st-bezahlt { background: var(--ok-bg); color: var(--ok-fg); border-color: #a7f3d0; }
+
+.ms-row-actions { display: flex; gap: 2px; justify-content: flex-end; }
+.icon-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.icon-btn:hover { background: #f1f5f9; color: var(--text); }
+
+/* Meilenstein-Formular */
+.ms-form {
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.ms-form-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1.6fr 1fr 1fr 1fr;
+  gap: 12px;
+}
+.ms-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.ms-form input,
+.ms-form select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--card);
+}
+.ms-form input:focus,
+.ms-form select:focus { outline: none; border-color: var(--accent); }
+.ms-form-actions { display: flex; gap: 10px; margin-top: 14px; }
+
+@media (max-width: 760px) {
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .ms-row { grid-template-columns: 4px 1fr 90px; grid-row-gap: 6px; }
+  .ms-form-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ───────────── Projekte (Liste + Detail) ───────────── */
+.proj-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.proj-card {
+  display: flex;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+}
+.proj-card:hover { border-color: var(--accent); }
+.proj-card-bar { width: 6px; flex-shrink: 0; }
+.proj-card-body { padding: 12px 14px; min-width: 0; }
+.proj-card-name { font-size: 15px; font-weight: 700; }
+.proj-card-client { font-size: 13px; color: var(--muted); margin: 2px 0 8px; }
+.proj-card-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+
+/* Status-Pill (geteilt: Projekt- und Rechnungsstatus) */
+.status-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 2px 9px;
+  text-transform: capitalize;
+  background: #f1f5f9;
+  color: var(--muted);
+}
+.status-pill.st-akquise { background: #f3e8ff; color: #7e22ce; }
+.status-pill.st-aktiv { background: var(--ok-bg); color: var(--ok-fg); }
+.status-pill.st-pausiert { background: #fef9c3; color: #a16207; }
+.status-pill.st-abgeschlossen { background: #e2e8f0; color: #475569; }
+.status-pill.st-offen { background: #fff7ed; color: #c2410c; }
+.status-pill.st-gestellt { background: #eff6ff; color: #1d4ed8; }
+.status-pill.st-bezahlt { background: var(--ok-bg); color: var(--ok-fg); }
+
+.detail-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.back-btn { align-self: flex-start; }
+
+.proj-head { display: flex; gap: 12px; align-items: stretch; margin-bottom: 18px; }
+.proj-head-bar { width: 6px; border-radius: 3px; }
+.proj-head-name { margin: 0; font-size: 22px; }
+.proj-head-sub { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; font-size: 13px; color: var(--muted); }
+
+.cap-bar.big { height: 8px; margin-bottom: 22px; }
+
+.team-row {
+  display: grid;
+  grid-template-columns: 1fr 140px 120px;
+  align-items: center;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.team-name { font-size: 14px; font-weight: 600; }
+.team-days { font-size: 13px; color: var(--muted); text-align: right; }
+
+.ms-row-compact { grid-template-columns: 1fr 120px 100px 110px 60px; }
+.ms-add-btn { margin-left: auto; font-size: 12px; padding: 4px 10px; font-weight: 600; }
+.ms-sums {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.proj-form-grid { grid-template-columns: repeat(4, 1fr); }
+.ms-form input[type='color'] { padding: 2px; height: 36px; }
+
+@media (max-width: 760px) {
+  .team-row { grid-template-columns: 1fr 100px; }
+  .team-row .cap-bar { display: none; }
+  .proj-form-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ───────────── Feiertage (Hamburg) im Buchungsraster ───────────── */
+.gh.is-holiday { background: #fdf2f8; color: #be185d; }
+.holiday-tag {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #be185d;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gc.cell.is-holiday {
+  background: repeating-linear-gradient(
+    -45deg,
+    #fdf2f8,
+    #fdf2f8 7px,
+    #fce7f3 7px,
+    #fce7f3 14px
+  );
+}

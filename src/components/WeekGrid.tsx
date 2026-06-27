@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { fetchWeek, type Booking, type Project, type WeekData } from '../lib/data'
 import { addDays, dayLabels, formatDay, isoWeek, mondayOf, toISODate } from '../lib/dates'
+import { holidayName } from '../lib/holidays'
 
 export default function WeekGrid() {
   const [monday, setMonday] = useState(() => mondayOf(new Date()))
@@ -44,6 +45,9 @@ export default function WeekGrid() {
 
   const isToday = (d: Date) => toISODate(d) === toISODate(new Date())
 
+  // Feiertage (Hamburg) dieser Woche – nicht buchbar, mindern die Kapazität.
+  const holidaysThisWeek = days.filter((d) => holidayName(toISODate(d))).length
+
   return (
     <div className="grid-wrap">
       <div className="week-nav">
@@ -61,14 +65,23 @@ export default function WeekGrid() {
       {data && (
         <div className="grid" style={{ gridTemplateColumns: '220px repeat(5, 1fr)' }}>
           <div className="gh corner">Mitarbeiter</div>
-          {days.map((d, i) => (
-            <div key={i} className={`gh${isToday(d) ? ' is-today' : ''}`}>
-              {dayLabels[i]} <span>{formatDay(d)}</span>
-            </div>
-          ))}
+          {days.map((d, i) => {
+            const hol = holidayName(toISODate(d))
+            return (
+              <div
+                key={i}
+                className={`gh${isToday(d) ? ' is-today' : ''}${hol ? ' is-holiday' : ''}`}
+                title={hol ?? undefined}
+              >
+                {dayLabels[i]} <span>{formatDay(d)}</span>
+                {hol && <span className="holiday-tag">{hol}</span>}
+              </div>
+            )
+          })}
 
           {data.employees.map((emp) => {
-            const avail = Number(emp.weekly_hours) / 8
+            // FTE-Anteil × verfügbare Arbeitstage (5 − Feiertage) dieser Woche.
+            const avail = (Number(emp.weekly_hours) / 40) * (5 - holidaysThisWeek)
             const booked = bookedDays(emp.id)
             const pct = avail ? Math.round((booked / avail) * 100) : 0
             const over = pct > 100
@@ -90,7 +103,12 @@ export default function WeekGrid() {
                 </div>
 
                 {days.map((day, i) => (
-                  <div key={i} className={`gc cell${isToday(day) ? ' is-today' : ''}`}>
+                  <div
+                    key={i}
+                    className={`gc cell${isToday(day) ? ' is-today' : ''}${
+                      holidayName(toISODate(day)) ? ' is-holiday' : ''
+                    }`}
+                  >
                     {bookingsFor(emp.id, day).map((b) => {
                       const p = projById.get(b.project_id)
                       const color = p?.color ?? '#94a3b8'

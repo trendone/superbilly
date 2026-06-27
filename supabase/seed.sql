@@ -23,10 +23,10 @@ insert into employees (name, email, weekly_hours) values
   ('Eva Brandt',   'eva.brandt@trendone.com',    40);
 
 -- ---------- Projekte (echte, nicht System) ----------
-insert into projects (name, color, status, client, budget_days) values
-  ('Website Relaunch', '#7c6dfa', 'aktiv',   'Acme GmbH', 20),
-  ('Mobile App',       '#34d399', 'aktiv',   'Globex',    35),
-  ('Markenstrategie',  '#fb923c', 'akquise', 'Initech',   null);
+insert into projects (name, color, status, client, budget_days, budget_eur, start_date, end_date) values
+  ('Website Relaunch', '#7c6dfa', 'aktiv',   'Acme GmbH', 20, 60000,  current_date - 60, current_date + 30),
+  ('Mobile App',       '#34d399', 'aktiv',   'Globex',    35, 120000, current_date - 20, current_date + 90),
+  ('Markenstrategie',  '#fb923c', 'akquise', 'Initech',   15, 25000,  current_date + 10, null);
 
 -- ---------- Buchungen in der aktuellen Woche ----------
 -- Anker: Montag der laufenden Woche.
@@ -51,5 +51,20 @@ cross join lateral (
          (date_trunc('week', current_date)::date + v.off_end)   as ende,
          v.budget as budget, v.note as note
 ) d;
+
+-- ---------- Meilensteine (Rechnungslogik, relativ zu heute) ----------
+insert into milestones (project_id, title, due_date, amount_eur, invoice_status)
+select p.id, v.title, current_date + v.day_offset, v.amount, v.status
+from (values
+  -- (Projekt, Titel, Tagesoffset von heute, Betrag, Status)
+  ('Website Relaunch', 'Anzahlung bei Auftrag',     -40, 8000,  'bezahlt'),
+  ('Website Relaunch', 'Abnahme Konzeptphase',       -5, 6000,  'gestellt'),
+  ('Website Relaunch', 'Go-Live & Schlussrechnung',   3, 6000,  'offen'),
+  ('Mobile App',       'Meilenstein 1 – Prototyp',  -12, 12000, 'gestellt'),
+  ('Mobile App',       'Meilenstein 2 – Beta',       18, 15000, 'offen'),
+  ('Mobile App',       'Schlussrechnung',            55, 8000,  'offen'),
+  ('Markenstrategie',  'Angebot offen (kein Datum)', null, 9000, 'offen')
+) as v(proj, title, day_offset, amount, status)
+join projects p on p.name = v.proj;
 
 commit;

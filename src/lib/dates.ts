@@ -28,6 +28,19 @@ export function formatDay(date: Date): string {
   return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.`
 }
 
+/** Zählt Arbeitstage (Mo–Fr) im Bereich [startISO..endISO] inklusive. */
+export function workingDaysBetween(startISO: string, endISO: string): number {
+  let count = 0
+  const d = new Date(`${startISO}T00:00:00`)
+  const end = new Date(`${endISO}T00:00:00`)
+  while (d <= end) {
+    const wd = d.getDay()
+    if (wd !== 0 && wd !== 6) count++
+    d.setDate(d.getDate() + 1)
+  }
+  return count
+}
+
 export function isoWeek(date: Date): number {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
   const dayNum = (d.getUTCDay() + 6) % 7
