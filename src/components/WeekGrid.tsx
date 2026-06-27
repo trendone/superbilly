@@ -102,7 +102,14 @@ export default function WeekGrid() {
 
       {data && (
         <div className="grid-scroll">
-        <div className="grid" style={{ '--cols': days.length } as unknown as CSSProperties}>
+        <div
+          className="grid"
+          style={
+            {
+              gridTemplateColumns: `var(--name-w, 220px) repeat(${days.length}, minmax(var(--col-min, 0px), 1fr))`,
+            } as CSSProperties
+          }
+        >
           <div className="gh corner">Mitarbeiter</div>
           {days.map((d, i) => {
             const hol = holidayName(toISODate(d))

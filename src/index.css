@@ -197,18 +197,18 @@ code {
 .gh.week-sep, .gc.week-sep { border-left: 2px solid #cbd5e1; }
 .emp-abs { color: var(--amber); }
 
+/* Scroll-Wrapper trägt Rahmen/Radius/Overflow – NICHT .grid selbst, sonst
+   würde .grid die Spalten clippen und die sticky-Spalte bräche (iOS Safari). */
 .grid-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: 12px;
 }
 .grid {
   display: grid;
-  grid-template-columns: var(--name-w, 220px) repeat(var(--cols), minmax(var(--col-min, 0px), 1fr));
   gap: 1px;
   background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
 }
 /* Mitarbeiter-Spalte beim horizontalen Scrollen fixieren. */
 .gh.corner,
@@ -771,10 +771,14 @@ code {
 
   .main { padding: 12px; }
 
-  /* Planungsraster: schmale, fixierte MA-Spalte + horizontal scrollende Tage */
+  /* Planungsraster: schmale, fixierte MA-Spalte + horizontal scrollende Tage.
+     width:max-content lässt das Grid breiter als den Viewport werden, damit
+     .grid-scroll tatsächlich horizontal scrollt. */
   .grid {
     --name-w: 124px;
     --col-min: 116px;
+    width: max-content;
+    min-width: 100%;
   }
   .gc.emp,
   .gh.corner {
