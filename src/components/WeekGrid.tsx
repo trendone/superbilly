@@ -2,20 +2,28 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { fetchWeek, type Booking, type Project, type WeekData } from '../lib/data'
 import { addDays, dayLabels, formatDay, isoWeek, mondayOf, toISODate } from '../lib/dates'
 import { holidayName } from '../lib/holidays'
+import { ABSENCE_CATEGORIES } from '../lib/analytics'
 
 export default function WeekGrid() {
   const [monday, setMonday] = useState(() => mondayOf(new Date()))
+  const [weeks, setWeeks] = useState<1 | 2>(1)
   const [data, setData] = useState<WeekData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(monday, i)), [monday])
+  // Arbeitstage (Mo–Fr) über die sichtbaren 1 oder 2 Wochen.
+  const days = useMemo(() => {
+    const out: Date[] = []
+    for (let w = 0; w < weeks; w++)
+      for (let i = 0; i < 5; i++) out.push(addDays(monday, w * 7 + i))
+    return out
+  }, [monday, weeks])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetchWeek(toISODate(days[0]), toISODate(days[4]))
+    fetchWeek(toISODate(days[0]), toISODate(days[days.length - 1]))
       .then((d) => !cancelled && setData(d))
       .catch((e) => !cancelled && setError(e.message ?? String(e)))
       .finally(() => !cancelled && setLoading(false))
@@ -30,6 +38,9 @@ export default function WeekGrid() {
     return m
   }, [data])
 
+  const isAbsence = (p: Project | undefined) =>
+    !!p && p.is_system && (ABSENCE_CATEGORIES as readonly string[]).includes(p.name)
+
   function bookingsFor(empId: string, day: Date): Booking[] {
     const iso = toISODate(day)
     return (data?.bookings ?? []).filter(
@@ -37,65 +48,92 @@ export default function WeekGrid() {
     )
   }
 
-  function bookedDays(empId: string): number {
-    let sum = 0
-    for (const day of days) for (const b of bookingsFor(empId, day)) sum += Number(b.budget)
-    return sum
+  // Produktiv gebuchte Tage (ohne System-Kategorien) + Abwesenheitstage.
+  // Verfügbarkeit = FTE-Anteil × (Arbeitstage − Feiertage) − Abwesenheit.
+  function capacityFor(empId: string, weeklyHours: number) {
+    let productive = 0
+    let absence = 0
+    for (const day of days) {
+      for (const b of bookingsFor(empId, day)) {
+        const p = projById.get(b.project_id)
+        if (isAbsence(p)) absence += Number(b.budget)
+        else if (!p?.is_system) productive += Number(b.budget)
+      }
+    }
+    const workdays = days.filter((d) => !holidayName(toISODate(d))).length
+    const gross = (weeklyHours / 40) * workdays
+    const avail = Math.max(0, gross - absence)
+    const pct = avail ? Math.round((productive / avail) * 100) : 0
+    return {
+      productive: Math.round(productive * 10) / 10,
+      absence: Math.round(absence * 10) / 10,
+      avail: Math.round(avail * 10) / 10,
+      pct,
+    }
   }
 
   const isToday = (d: Date) => toISODate(d) === toISODate(new Date())
 
-  // Feiertage (Hamburg) dieser Woche – nicht buchbar, mindern die Kapazität.
-  const holidaysThisWeek = days.filter((d) => holidayName(toISODate(d))).length
+  const lastMonday = addDays(monday, (weeks - 1) * 7)
+  const weekLabel =
+    weeks === 1
+      ? `KW ${isoWeek(monday)} · ${formatDay(days[0])}–${formatDay(days[4])}`
+      : `KW ${isoWeek(monday)}–${isoWeek(lastMonday)} · ${formatDay(days[0])}–${formatDay(days[days.length - 1])}`
 
   return (
     <div className="grid-wrap">
       <div className="week-nav">
-        <button onClick={() => setMonday(addDays(monday, -7))} title="Vorherige Woche">←</button>
-        <span className="week-label">
-          KW {isoWeek(monday)} · {formatDay(days[0])}–{formatDay(days[4])}
-        </span>
-        <button onClick={() => setMonday(addDays(monday, 7))} title="Nächste Woche">→</button>
+        <button onClick={() => setMonday(addDays(monday, -7 * weeks))} title="Zurück">←</button>
+        <span className="week-label">{weekLabel}</span>
+        <button onClick={() => setMonday(addDays(monday, 7 * weeks))} title="Weiter">→</button>
         <button className="today" onClick={() => setMonday(mondayOf(new Date()))}>Heute</button>
+        <span className="week-toggle">
+          <button className={weeks === 1 ? 'active' : ''} onClick={() => setWeeks(1)}>
+            1 Woche
+          </button>
+          <button className={weeks === 2 ? 'active' : ''} onClick={() => setWeeks(2)}>
+            2 Wochen
+          </button>
+        </span>
       </div>
 
       {error && <div className="status err">✕ {error}</div>}
       {loading && !data && <div className="status pending">… lädt</div>}
 
       {data && (
-        <div className="grid" style={{ gridTemplateColumns: '220px repeat(5, 1fr)' }}>
+        <div className="grid" style={{ gridTemplateColumns: `220px repeat(${days.length}, 1fr)` }}>
           <div className="gh corner">Mitarbeiter</div>
           {days.map((d, i) => {
             const hol = holidayName(toISODate(d))
             return (
               <div
                 key={i}
-                className={`gh${isToday(d) ? ' is-today' : ''}${hol ? ' is-holiday' : ''}`}
+                className={`gh${isToday(d) ? ' is-today' : ''}${hol ? ' is-holiday' : ''}${
+                  weeks === 2 && i === 5 ? ' week-sep' : ''
+                }`}
                 title={hol ?? undefined}
               >
-                {dayLabels[i]} <span>{formatDay(d)}</span>
+                {dayLabels[i % 5]} <span>{formatDay(d)}</span>
                 {hol && <span className="holiday-tag">{hol}</span>}
               </div>
             )
           })}
 
           {data.employees.map((emp) => {
-            // FTE-Anteil × verfügbare Arbeitstage (5 − Feiertage) dieser Woche.
-            const avail = (Number(emp.weekly_hours) / 40) * (5 - holidaysThisWeek)
-            const booked = bookedDays(emp.id)
-            const pct = avail ? Math.round((booked / avail) * 100) : 0
-            const over = pct > 100
+            const cap = capacityFor(emp.id, Number(emp.weekly_hours))
+            const over = cap.pct > 100
             return (
               <Fragment key={emp.id}>
                 <div className="gc emp">
                   <div className="emp-name">{emp.name}</div>
                   <div className="emp-cap">
-                    {booked} / {avail} Tage · {pct}%
+                    {cap.productive} / {cap.avail} Tage · {cap.pct}%
+                    {cap.absence > 0 && <span className="emp-abs"> · {cap.absence} T abw.</span>}
                   </div>
                   <div className="cap-bar">
                     <span
                       style={{
-                        width: `${Math.min(pct, 100)}%`,
+                        width: `${Math.min(cap.pct, 100)}%`,
                         background: over ? 'var(--red)' : undefined,
                       }}
                     />
@@ -107,7 +145,7 @@ export default function WeekGrid() {
                     key={i}
                     className={`gc cell${isToday(day) ? ' is-today' : ''}${
                       holidayName(toISODate(day)) ? ' is-holiday' : ''
-                    }`}
+                    }${weeks === 2 && i === 5 ? ' week-sep' : ''}`}
                   >
                     {bookingsFor(emp.id, day).map((b) => {
                       const p = projById.get(b.project_id)

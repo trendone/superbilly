@@ -2,11 +2,12 @@ import { useState } from 'react'
 import WeekGrid from './components/WeekGrid'
 import Dashboard from './components/Dashboard'
 import Projects from './components/Projects'
+import Analytics from './components/Analytics'
 import Login from './components/Login'
 import { supabaseConfigured } from './lib/supabase'
 import { signOut, useSession } from './lib/auth'
 
-type Tab = 'raster' | 'projekte' | 'dashboard'
+type Tab = 'raster' | 'projekte' | 'dashboard' | 'auswertung'
 
 export default function App() {
   const { session, loading } = useSession()
@@ -65,6 +66,12 @@ export default function App() {
           >
             Rechnungen
           </button>
+          <button
+            className={`tab${tab === 'auswertung' ? ' active' : ''}`}
+            onClick={() => setTab('auswertung')}
+          >
+            Auswertung
+          </button>
         </nav>
         <div className="topbar-right">
           <span className="user-email">{email}</span>
@@ -77,6 +84,7 @@ export default function App() {
         {tab === 'raster' && <WeekGrid />}
         {tab === 'projekte' && <Projects />}
         {tab === 'dashboard' && <Dashboard />}
+        {tab === 'auswertung' && <Analytics />}
       </main>
     </div>
   )

@@ -9,6 +9,8 @@
   --pending-bg: #fff7ed;
   --pending-fg: #c2410c;
   --red: #ef4444;
+  --green: #16a34a;
+  --amber: #d97706;
   --border: #e2e8f0;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -181,6 +183,19 @@ code {
 .week-nav button:hover { background: #f1f5f9; }
 .week-nav .today { color: var(--accent); font-weight: 600; }
 .week-label { font-weight: 600; min-width: 180px; text-align: center; }
+.week-toggle { display: inline-flex; gap: 0; margin-left: auto; }
+.week-toggle button {
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.week-toggle button:first-child { border-radius: 8px 0 0 8px; }
+.week-toggle button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+.week-toggle button.active { background: #eef2ff; color: var(--accent); font-weight: 600; }
+.gh.week-sep, .gc.week-sep { border-left: 2px solid #cbd5e1; }
+.emp-abs { color: var(--amber); }
 
 .grid {
   display: grid;
@@ -478,4 +493,91 @@ code {
     #fce7f3 7px,
     #fce7f3 14px
   );
+}
+
+/* ───────────── Auswertung ───────────── */
+.analytics {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.sub-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.ana-section {
+  margin-bottom: 8px;
+}
+.ana-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 13px;
+}
+.ana-table th,
+.ana-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.ana-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: #f8fafc;
+}
+.ana-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.ana-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.ana-table .dim {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ana-table .dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: middle;
+}
+.ana-table .red {
+  color: var(--red);
+  font-weight: 600;
+}
+.ana-table .green {
+  color: var(--green);
+  font-weight: 600;
+}
+.ana-table .amber {
+  color: var(--amber);
+  font-weight: 600;
+}
+.ana-table .pct {
+  font-weight: 700;
+}
+.emp-block {
+  margin-bottom: 22px;
+}
+.emp-block h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.emp-block h3 .dim {
+  color: var(--muted);
+  font-weight: 400;
+}
+.muted {
+  color: var(--muted);
 }
