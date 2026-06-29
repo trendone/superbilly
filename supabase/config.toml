@@ -376,6 +376,11 @@ allow_dynamic_registration = false
 enabled = true
 verify_jwt = false
 
+# Pull-Sync Mite Ist-Zeiten → project_actuals. Per x-sync-secret-Header geschützt.
+[functions.sync-mite]
+enabled = true
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
