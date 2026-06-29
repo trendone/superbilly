@@ -205,25 +205,37 @@ export type Database = {
         Row: {
           amount_eur: number | null
           due_date: string | null
+          external_id: string | null
           id: string
+          invoice_number: string | null
           invoice_status: string
+          product: string | null
           project_id: string
+          source: string
           title: string
         }
         Insert: {
           amount_eur?: number | null
           due_date?: string | null
+          external_id?: string | null
           id?: string
+          invoice_number?: string | null
           invoice_status?: string
+          product?: string | null
           project_id: string
+          source?: string
           title: string
         }
         Update: {
           amount_eur?: number | null
           due_date?: string | null
+          external_id?: string | null
           id?: string
+          invoice_number?: string | null
           invoice_status?: string
+          product?: string | null
           project_id?: string
+          source?: string
           title?: string
         }
         Relationships: [

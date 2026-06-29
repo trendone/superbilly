@@ -8,6 +8,7 @@ import {
   summarize,
   teamKpis,
   yearWindow,
+  KEYNOTE_KTR,
   type AnalyticsData,
   type Employee,
   type Health,
@@ -85,6 +86,7 @@ export default function Analytics() {
   // Projekt-Controls
   const [sort, setSort] = useState<Sort>('health')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('alle')
+  const [catFilter, setCatFilter] = useState<string>('no-keynote') // Default: Keynotes ausgeblendet
 
   function load() {
     return fetchAnalytics()
@@ -120,30 +122,42 @@ export default function Analytics() {
     [period, year],
   )
 
+  const allStats = useMemo(() => (data ? projectStats(data) : []), [data])
+
+  // Distinkte Leistungskategorien (für das Filter-Dropdown).
+  const categories = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of allStats) if (p.productLabel) s.add(p.productLabel)
+    return [...s].sort((a, b) => a.localeCompare(b))
+  }, [allStats])
+
   const projects = useMemo(() => {
-    if (!data) return []
-    let list = projectStats(data)
+    let list = allStats
     if (statusFilter !== 'alle') list = list.filter((p) => p.project.status === statusFilter)
+    if (catFilter === 'no-keynote')
+      list = list.filter((p) => !p.productKtr || !(KEYNOTE_KTR as readonly string[]).includes(p.productKtr))
+    else if (catFilter !== 'alle') list = list.filter((p) => p.productLabel === catFilter)
     const order: Record<Health, number> = { over: 0, tight: 1, ok: 2, none: 3 }
-    list.sort((a, b) => {
+    return [...list].sort((a, b) => {
       if (sort === 'name') return a.project.name.localeCompare(b.project.name)
       if (sort === 'diff') return (a.diffDays ?? Infinity) - (b.diffDays ?? Infinity)
       if (sort === 'util') return (b.budgetPct ?? -1) - (a.budgetPct ?? -1)
       return order[a.health] - order[b.health] || a.project.name.localeCompare(b.project.name)
     })
-    return list
-  }, [data, sort, statusFilter])
+  }, [allStats, sort, statusFilter, catFilter])
 
   const kpis = useMemo(() => (data ? teamKpis(data) : null), [data])
 
   function exportProjects() {
     const rows: (string | number)[][] = [
-      ['Projekt', 'Kunde', 'Status', 'Gebucht (T)', 'Budget Plan (T)', 'Differenz (T)', 'Ist Mite (T)', 'Ist Mite (€)', 'Δ Soll/Ist (T)', 'Budget (€)', 'Tagessatz (€)', 'Budget Mite (T)', 'Verbrauch %', 'Fakturiert (€)', 'Offen (€)', 'Prognose'],
+      ['Projekt', 'Kunde', 'Leistungskategorie', 'KTR', 'Status', 'Gebucht (T)', 'Budget Plan (T)', 'Differenz (T)', 'Ist Mite (T)', 'Ist Mite (€)', 'Δ Soll/Ist (T)', 'Budget (€)', 'Tagessatz (€)', 'Budget Mite (T)', 'Verbrauch %', 'Fakturiert (€)', 'Offen (€)', 'Prognose'],
     ]
     for (const p of projects)
       rows.push([
         p.project.name,
         p.project.client ?? '',
+        p.productLabel ?? '',
+        p.productKtr ?? '',
         p.project.status,
         p.bookedDays,
         p.budgetDays ?? '',
@@ -203,6 +217,9 @@ export default function Analytics() {
           setSort={setSort}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
+          catFilter={catFilter}
+          setCatFilter={setCatFilter}
+          categories={categories}
         />
       )}
 
@@ -231,12 +248,18 @@ function ProjectsView({
   setSort,
   statusFilter,
   setStatusFilter,
+  catFilter,
+  setCatFilter,
+  categories,
 }: {
   projects: ProjectStat[]
   sort: Sort
   setSort: (s: Sort) => void
   statusFilter: StatusFilter
   setStatusFilter: (s: StatusFilter) => void
+  catFilter: string
+  setCatFilter: (s: string) => void
+  categories: string[]
 }) {
   const tot = projects.reduce(
     (a, p) => ({
@@ -268,6 +291,16 @@ function ProjectsView({
             <option value="akquise">Akquise</option>
             <option value="pausiert">Pausiert</option>
             <option value="abgeschlossen">Abgeschlossen</option>
+          </select>
+        </label>
+        <label>
+          Kategorie{' '}
+          <select className="field-inline" value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
+            <option value="no-keynote">Ohne Keynotes</option>
+            <option value="alle">Alle</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </label>
         <label>
@@ -311,7 +344,9 @@ function ProjectsView({
                   <td>
                     <span className="dot" style={{ background: p.project.color ?? '#94a3b8' }} />
                     {p.project.name}
-                    {p.project.client && <div className="dim">{p.project.client}</div>}
+                    {(p.project.client || p.productLabel) && (
+                      <div className="dim">{[p.project.client, p.productLabel].filter(Boolean).join(' · ')}</div>
+                    )}
                   </td>
                   <td className="bar-cell">
                     {p.budgetPct == null ? (

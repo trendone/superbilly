@@ -29,9 +29,18 @@ interface MilestoneRow {
   amount_eur: number | null;
   invoice_status: string;
   invoice_number: string | null;
+  product: string | null;
   external_id: string;
   source: string;
 }
+
+// Produktname vereinheitlichen: " / "-Trenner, Mehrfach-Leerzeichen weg.
+// "Consulting/ Focus Keynote / 50200" → "Consulting / Focus Keynote / 50200".
+const normProduct = (v: unknown): string | null => {
+  const name = v && typeof v === "object" && "name" in v ? String((v as Record<string, unknown>).name) : null;
+  if (!name) return null;
+  return name.replace(/\s*\/\s*/g, " / ").replace(/\s+/g, " ").trim();
+};
 
 async function getAccessToken(): Promise<string> {
   const body = new URLSearchParams({
@@ -78,7 +87,7 @@ async function buildRows(token: string): Promise<{ rows: MilestoneRow[]; unmatch
   const records = await coql(
     token,
     "select id, Beschreibung, Umsatz, Monat, Rechnungsdatum, Rechnung_gestellt, " +
-      "Rechnungsnummer, Verkaufschance from Abgrenzungen where Beauftragt = true",
+      "Rechnungsnummer, Produkt, Verkaufschance from Abgrenzungen where Beauftragt = true",
   );
 
   // Projekt-Map: Deal-ID (external_id) → projects.id
@@ -103,6 +112,7 @@ async function buildRows(token: string): Promise<{ rows: MilestoneRow[]; unmatch
       amount_eur: a.Umsatz != null ? Number(a.Umsatz) : null,
       invoice_status: a.Rechnung_gestellt ? "gestellt" : "offen",
       invoice_number: (a.Rechnungsnummer as string) ?? null,
+      product: normProduct(a.Produkt),
       external_id: String(a.id),
       source: "zoho",
     });

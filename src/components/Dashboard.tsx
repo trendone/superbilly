@@ -283,25 +283,38 @@ export default function Dashboard() {
                     <div className="ms-amount">
                       {m.amount_eur != null ? eurExact.format(Number(m.amount_eur)) : '—'}
                     </div>
-                    <select
-                      className={`ms-status st-${m.invoice_status}`}
-                      value={m.invoice_status}
-                      onChange={(e) => onStatus(m, e.target.value)}
-                    >
-                      {INVOICE_STATES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="ms-row-actions">
-                      <button className="icon-btn" title="Bearbeiten" onClick={() => setEditing(m.id)}>
-                        ✎
-                      </button>
-                      <button className="icon-btn" title="Löschen" onClick={() => onDelete(m)}>
-                        🗑
-                      </button>
-                    </div>
+                    {m.source === 'zoho' ? (
+                      <>
+                        <span className={`ms-status st-${m.invoice_status}`} title="Aus Zoho gespiegelt – read-only">
+                          {m.invoice_status}
+                        </span>
+                        <div className="ms-row-actions">
+                          <span className="dim" title="Aus Zoho gespiegelt – in Zoho (Abgrenzungen) pflegen">🔒 Zoho</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <select
+                          className={`ms-status st-${m.invoice_status}`}
+                          value={m.invoice_status}
+                          onChange={(e) => onStatus(m, e.target.value)}
+                        >
+                          {INVOICE_STATES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="ms-row-actions">
+                          <button className="icon-btn" title="Bearbeiten" onClick={() => setEditing(m.id)}>
+                            ✎
+                          </button>
+                          <button className="icon-btn" title="Löschen" onClick={() => onDelete(m)}>
+                            🗑
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ),
               )}

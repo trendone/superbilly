@@ -99,6 +99,21 @@ function workdaysNoHolidays(startISO: string, endISO: string): number {
 const isAbsence = (p: Project | undefined) =>
   !!p && p.is_system && (ABSENCE_CATEGORIES as readonly string[]).includes(p.name)
 
+// Leistungskategorie aus dem Produktnamen "Bereich / Leistungstyp / KTR".
+export interface ProductCategory { raw: string; label: string; ktr: string | null }
+export function parseProduct(raw: string | null | undefined): ProductCategory | null {
+  if (!raw) return null
+  const parts = raw.split(' / ').map((p) => p.trim()).filter(Boolean)
+  if (parts.length === 0) return null
+  const last = parts[parts.length - 1]
+  if (/^\d+$/.test(last)) {
+    return { raw, label: parts.slice(1, -1).join(' / ') || parts[0], ktr: last }
+  }
+  return { raw, label: parts.length > 1 ? parts.slice(1).join(' / ') : parts[0], ktr: null }
+}
+// KTR-Nummern, die als „Keynote" gelten und ausgefiltert werden können.
+export const KEYNOTE_KTR = ['50100', '50200'] as const
+
 // ── Projekt-Auswertung ─────────────────────────────────────────────────────
 
 export type Health = 'over' | 'tight' | 'ok' | 'none'
@@ -117,6 +132,8 @@ export interface ProjectStat {
   dayRateEur: number | null // verwendeter Tagessatz aus Mite (bei einem Satz exakt, bei mehreren stundengewichtet)
   budgetDaysMite: number | null // Budget € / Tagessatz = verkaufte Tage
   rateBreakdown: { rate: number; hours: number }[] // definierte Mite-Sätze × Stunden (für Tooltip)
+  productLabel: string | null // Leistungskategorie (dominantes Produkt seiner Meilensteine)
+  productKtr: string | null // KTR-Nummer der Kategorie (z. B. 50100)
   budgetDays: number | null
   diffDays: number | null
   budgetPct: number | null // gebucht / Budget
@@ -182,6 +199,20 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       }
     }
     miteByProject.set(pa.project_id, cur)
+  }
+
+  // Dominantes Produkt je Projekt (häufigste Leistungskategorie seiner Meilensteine).
+  const productCount = new Map<string, Map<string, number>>()
+  for (const m of data.milestones) {
+    if (!m.product) continue
+    const pm = productCount.get(m.project_id) ?? new Map<string, number>()
+    pm.set(m.product, (pm.get(m.product) ?? 0) + 1)
+    productCount.set(m.project_id, pm)
+  }
+  const dominantProduct = (projectId: string): string | null => {
+    const pm = productCount.get(projectId)
+    if (!pm) return null
+    return [...pm.entries()].sort((a, b) => b[1] - a[1])[0][0]
   }
 
   const projects = data.projects.filter((p) => !p.is_system)
@@ -254,6 +285,7 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
     const rateBreakdown = [...(ratesByProject.get(project.id) ?? new Map<number, number>())]
       .map(([rate, min]) => ({ rate, hours: round1(min / 60) }))
       .sort((a, b) => b.hours - a.hours)
+    const cat = parseProduct(dominantProduct(project.id))
 
     return {
       project,
@@ -269,6 +301,8 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       dayRateEur,
       budgetDaysMite,
       rateBreakdown,
+      productLabel: cat?.label ?? null,
+      productKtr: cat?.ktr ?? null,
       budgetDays,
       diffDays: diffDays != null ? round1(diffDays) : null,
       budgetPct,
