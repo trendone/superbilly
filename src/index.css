@@ -806,3 +806,19 @@ code {
   .heat-btn { min-width: 44px; padding: 8px 2px; }
   .heat .heat-name { min-width: 96px; }
 }
+
+/* ── Admin / Verwaltung ─────────────────────────────────────────── */
+.admin-h { font-size: 18px; margin: 0; }
+.admin-sec { font-size: 14px; margin: 0; }
+.admin-check { display: flex; align-items: center; gap: 6px; flex-direction: row !important; }
+.admin-check input { width: auto; }
+.admin-periods { padding: 10px 4px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.admin-period-row { display: flex; align-items: center; gap: 14px; }
+.admin-period-add { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.admin-period-add input { max-width: 150px; }
+.admin-cat-list { display: flex; flex-direction: column; gap: 4px; }
+.admin-cat-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border, #e2e8f0); }
+.admin-cat-name { flex: 1; }
+.admin-swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.admin-swatch { width: 22px; height: 22px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; }
+.admin-swatch.sel { border-color: var(--text, #0f172a); outline: 2px solid #fff; outline-offset: -4px; }

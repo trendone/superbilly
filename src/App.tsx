@@ -3,11 +3,12 @@ import WeekGrid from './components/WeekGrid'
 import Dashboard from './components/Dashboard'
 import Projects from './components/Projects'
 import Analytics from './components/Analytics'
+import Admin from './components/Admin'
 import Login from './components/Login'
 import { supabaseConfigured } from './lib/supabase'
 import { signOut, useSession } from './lib/auth'
 
-type Tab = 'raster' | 'projekte' | 'dashboard' | 'auswertung'
+type Tab = 'raster' | 'projekte' | 'dashboard' | 'auswertung' | 'admin'
 
 export default function App() {
   const { session, loading } = useSession()
@@ -71,6 +72,12 @@ export default function App() {
           >
             Auswertung
           </button>
+          <button
+            className={`tab${tab === 'admin' ? ' active' : ''}`}
+            onClick={() => setTab('admin')}
+          >
+            Verwaltung
+          </button>
         </nav>
         <div className="topbar-right">
           <span className="user-email">{email}</span>
@@ -84,6 +91,7 @@ export default function App() {
         {tab === 'projekte' && <Projects />}
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'auswertung' && <Analytics />}
+        {tab === 'admin' && <Admin />}
       </main>
     </div>
   )
