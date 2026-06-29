@@ -113,6 +113,7 @@ export interface ProjectStat {
   istMiteEur: number | null // Ist-Umsatz aus Mite
   hasMite: boolean // gibt es überhaupt Mite-Ist für dieses Projekt?
   deltaSollIstDays: number | null // Soll (verplant) − Ist (Mite); null ohne Mite-Daten
+  budgetConsumedPct: number | null // Ist-€ (Mite) / Budget-€; null ohne Mite oder Budget
   budgetDays: number | null
   diffDays: number | null
   budgetPct: number | null // gebucht / Budget
@@ -219,6 +220,11 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
     const hasMite = istMiteMinutes > 0
     // Δ Soll/Ist = verplante Tage (Soll) − Ist (Mite). >0: weniger getrackt als geplant.
     const deltaSollIstDays = hasMite ? bookedDays - istMiteDays : null
+    // Budget-Verbrauch = Ist-€ (Mite) / Budget-€.
+    const budgetConsumedPct =
+      hasMite && budgetEur != null && budgetEur > 0
+        ? Math.round((mite!.revenue / budgetEur) * 100)
+        : null
 
     return {
       project,
@@ -230,6 +236,7 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       istMiteEur: hasMite ? Math.round(mite!.revenue) : null,
       hasMite,
       deltaSollIstDays: deltaSollIstDays != null ? round1(deltaSollIstDays) : null,
+      budgetConsumedPct,
       budgetDays,
       diffDays: diffDays != null ? round1(diffDays) : null,
       budgetPct,
