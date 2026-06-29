@@ -114,8 +114,9 @@ export interface ProjectStat {
   hasMite: boolean // gibt es überhaupt Mite-Ist für dieses Projekt?
   deltaSollIstDays: number | null // Soll (verplant) − Ist (Mite); null ohne Mite-Daten
   budgetConsumedPct: number | null // Ist-€ (Mite) / Budget-€; null ohne Mite oder Budget
-  dayRateEur: number | null // verwendeter Tagessatz aus Mite (Ø über abrechenbare Zeit)
+  dayRateEur: number | null // verwendeter Tagessatz aus Mite (bei einem Satz exakt, bei mehreren stundengewichtet)
   budgetDaysMite: number | null // Budget € / Tagessatz = verkaufte Tage
+  rateBreakdown: { rate: number; hours: number }[] // definierte Mite-Sätze × Stunden (für Tooltip)
   budgetDays: number | null
   diffDays: number | null
   budgetPct: number | null // gebucht / Budget
@@ -163,13 +164,23 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
   // billableMinutes = nur Zeilen mit revenue > 0 (für den Tagessatz; 0€-Services
   // wie Reise/intern würden den Satz sonst verwässern).
   const miteByProject = new Map<string, { minutes: number; revenue: number; billableMinutes: number }>()
+  // Definierte Sätze je Projekt: Satz (€/Tag, aus revenue/min rekonstruiert) → Minuten.
+  const ratesByProject = new Map<string, Map<number, number>>()
   for (const pa of data.projectActuals) {
     const cur = miteByProject.get(pa.project_id) ?? { minutes: 0, revenue: 0, billableMinutes: 0 }
     const min = Number(pa.minutes ?? 0)
     const rev = Number(pa.revenue_eur ?? 0)
     cur.minutes += min
     cur.revenue += rev
-    if (rev > 0) cur.billableMinutes += min
+    if (rev > 0) {
+      cur.billableMinutes += min
+      if (min > 0) {
+        const rate = Math.round((rev * 480) / min) // €/Tag des Services
+        const rm = ratesByProject.get(pa.project_id) ?? new Map<number, number>()
+        rm.set(rate, (rm.get(rate) ?? 0) + min)
+        ratesByProject.set(pa.project_id, rm)
+      }
+    }
     miteByProject.set(pa.project_id, cur)
   }
 
@@ -240,6 +251,9 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       dayRateEur != null && dayRateEur > 0 && budgetEur != null
         ? round1(budgetEur / dayRateEur)
         : null
+    const rateBreakdown = [...(ratesByProject.get(project.id) ?? new Map<number, number>())]
+      .map(([rate, min]) => ({ rate, hours: round1(min / 60) }))
+      .sort((a, b) => b.hours - a.hours)
 
     return {
       project,
@@ -254,6 +268,7 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       budgetConsumedPct,
       dayRateEur,
       budgetDaysMite,
+      rateBreakdown,
       budgetDays,
       diffDays: diffDays != null ? round1(diffDays) : null,
       budgetPct,

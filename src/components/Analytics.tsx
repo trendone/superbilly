@@ -33,6 +33,14 @@ function heatColor(pct: number, hasCap: boolean): { bg: string; fg: string } {
 
 const healthTone: Record<Health, string> = { over: 'red', tight: 'amber', ok: 'green', none: 'dim' }
 
+/** Tooltip für die Budget-(T)-Zelle: zeigt die definierten Mite-Sätze (× Stunden). */
+function rateTooltip(breakdown: { rate: number; hours: number }[], blended: number | null): string {
+  if (!breakdown.length) return 'kein Mite-Tagessatz'
+  if (breakdown.length === 1) return `Tagessatz ${eur.format(breakdown[0].rate)} (aus Mite)`
+  const parts = breakdown.map((b) => `${eur.format(b.rate)} × ${b.hours} h`).join(' · ')
+  return `Tagessätze: ${parts}${blended != null ? ` · Ø ${eur.format(blended)}` : ''}`
+}
+
 function downloadCSV(filename: string, rows: (string | number)[][]) {
   const csv = rows
     .map((r) =>
@@ -329,7 +337,7 @@ function ProjectsView({
                     {p.deltaSollIstDays == null ? '–' : `${p.deltaSollIstDays >= 0 ? '+' : ''}${p.deltaSollIstDays} T`}
                   </td>
                   <td className="num dim">{p.budgetEur != null ? eur.format(p.budgetEur) : '–'}</td>
-                  <td className="num dim" title={p.dayRateEur != null ? `Tagessatz ${eur.format(p.dayRateEur)} (aus Mite)` : 'kein Mite-Tagessatz'}>
+                  <td className="num dim" title={rateTooltip(p.rateBreakdown, p.dayRateEur)}>
                     {p.budgetDaysMite != null ? `${p.budgetDaysMite} T` : '–'}
                   </td>
                   <td className={`num ${p.budgetConsumedPct == null ? 'dim' : p.budgetConsumedPct > 100 ? 'red' : p.budgetConsumedPct >= 90 ? 'amber' : 'green'}`}>
