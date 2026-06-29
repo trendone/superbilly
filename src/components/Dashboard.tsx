@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  createMilestone,
   deleteMilestone,
   fetchDashboard,
   INVOICE_STATES,
@@ -75,7 +74,6 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<string | null>(null) // milestone id
-  const [adding, setAdding] = useState(false)
 
   const endOfWeekISO = useMemo(() => toISODate(addDays(mondayOf(new Date()), 6)), [])
 
@@ -202,28 +200,13 @@ export default function Dashboard() {
       </div>
 
       <div className="dash-actions">
-        <button className="btn-primary" onClick={() => setAdding((v) => !v)}>
-          {adding ? '× Abbrechen' : '+ Meilenstein'}
-        </button>
         <button className="btn-ghost" onClick={exportCsv} disabled={!data?.milestones.length}>
           ↓ CSV-Export
         </button>
       </div>
 
-      {adding && data && (
-        <MilestoneForm
-          projects={data.projects}
-          onCancel={() => setAdding(false)}
-          onSave={async (vals) => {
-            const created = await createMilestone(vals)
-            setData((d) => (d ? { ...d, milestones: [...d.milestones, created] } : d))
-            setAdding(false)
-          }}
-        />
-      )}
-
-      {data && data.milestones.length === 0 && !adding && (
-        <p className="hint">Noch keine Meilensteine. Lege den ersten mit „+ Meilenstein" an.</p>
+      {data && data.milestones.length === 0 && (
+        <p className="hint">Noch keine Meilensteine – sie werden automatisch aus Zoho (Abgrenzungen) gespiegelt.</p>
       )}
 
       {BUCKET_ORDER.map((b) => {

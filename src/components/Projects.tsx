@@ -296,7 +296,7 @@ function ProjectDetailView({ projectId, onBack }: { projectId: string; onBack: (
           <>
             <div className="ms-list">
               {detail.milestones.map((m) =>
-                msEditing === m.id ? (
+                m.source !== 'zoho' && msEditing === m.id ? (
                   <MilestoneForm
                     key={m.id}
                     projects={[projLite]}
@@ -317,36 +317,49 @@ function ProjectDetailView({ projectId, onBack }: { projectId: string; onBack: (
                     <div className="ms-amount">
                       {m.amount_eur != null ? eur.format(Number(m.amount_eur)) : '—'}
                     </div>
-                    <select
-                      className={`ms-status st-${m.invoice_status}`}
-                      value={m.invoice_status}
-                      onChange={(e) => onMsStatus(m.id, e.target.value)}
-                    >
-                      {INVOICE_STATES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="ms-row-actions">
-                      <button
-                        className="icon-btn"
-                        title="Bearbeiten"
-                        onClick={() => {
-                          setMsAdding(false)
-                          setMsEditing(m.id)
-                        }}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        className="icon-btn"
-                        title="Löschen"
-                        onClick={() => onMsDelete(m.id, m.title)}
-                      >
-                        🗑
-                      </button>
-                    </div>
+                    {m.source === 'zoho' ? (
+                      <>
+                        <span className={`ms-status st-${m.invoice_status}`} title="Aus Zoho gespiegelt – read-only">
+                          {m.invoice_status}
+                        </span>
+                        <div className="ms-row-actions">
+                          <span className="dim" title="Aus Zoho gespiegelt – in Zoho (Abgrenzungen) pflegen">🔒 Zoho</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <select
+                          className={`ms-status st-${m.invoice_status}`}
+                          value={m.invoice_status}
+                          onChange={(e) => onMsStatus(m.id, e.target.value)}
+                        >
+                          {INVOICE_STATES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="ms-row-actions">
+                          <button
+                            className="icon-btn"
+                            title="Bearbeiten"
+                            onClick={() => {
+                              setMsAdding(false)
+                              setMsEditing(m.id)
+                            }}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            className="icon-btn"
+                            title="Löschen"
+                            onClick={() => onMsDelete(m.id, m.title)}
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ),
               )}
