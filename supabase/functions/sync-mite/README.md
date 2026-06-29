@@ -3,7 +3,7 @@
 Pull-Sync **Mite Ist-Zeiten → `project_actuals`** (read-only, Roadmap v2.3).
 Liefert die tatsächlich getrackte Zeit pro Projekt/Monat/Service – Ist neben
 Volumen (`projects.budget_eur`) und Soll (Summe `bookings.budget`).
-Hintergrund: `ressourcenplanung/konzept.md` §3.7/§4.5.
+Hintergrund: `docs/konzept.md` §3.7/§4.5.
 
 ## Was die Function tut
 1. Gruppierter Mite-Report `group_by=project,month,service&at=<MITE_PERIOD>`.

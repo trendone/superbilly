@@ -16,7 +16,7 @@
 // beauftragte Angebote insgesamt) und kann nicht über die Modulgrenze nach
 // Leistungsbereich (am Deal) filtern. COQL macht beides in einem Call
 // (Live-Ergebnis 2026-06-29: 175 Zeilen, alle mit Angebotsnummer).
-// Hintergrund & Mapping: ressourcenplanung/zoho-anbindung.md §4.
+// Hintergrund & Mapping: docs/zoho-anbindung.md §4.
 // ============================================================
 
 const env = (k: string): string => {

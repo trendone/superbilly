@@ -10,7 +10,7 @@
 // Rechnungsdatum-Regel (an Live-Daten verifiziert): Rechnungsdatum ist nur
 // gefüllt, wenn Leistungsmonat ≠ Rechnungsmonat; sonst gilt Monat. Also
 //   due_date = Rechnungsdatum ?? Monat.
-// Hintergrund: ressourcenplanung/zoho-anbindung.md.
+// Hintergrund: docs/zoho-anbindung.md.
 // ============================================================
 
 const env = (k: string): string => {

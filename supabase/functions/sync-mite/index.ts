@@ -11,7 +11,7 @@
 //   - Mite-`revenue` ist in CENT → /100.
 //   - Header X-MiteApiKey wird case-sensitiv geprüft; Deno/fetch sendet klein →
 //     wir nutzen den Query-Param ?api_key=… (robust).
-// Hintergrund: ressourcenplanung/konzept.md §3.7/§4.5.
+// Hintergrund: docs/konzept.md §3.7/§4.5.
 // ============================================================
 
 const env = (k: string): string => {

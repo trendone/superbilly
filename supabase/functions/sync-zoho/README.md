@@ -2,7 +2,7 @@
 
 Pull-Sync **Zoho CRM → `projects`** (read-only Spiegelung, Roadmap v2.1).
 Angebotsgetrieben: beauftragte Angebote → zugehöriger Consulting-Deal → `projects`.
-Hintergrund & Feld-Mapping: `ressourcenplanung/zoho-anbindung.md`.
+Hintergrund & Feld-Mapping: `docs/zoho-anbindung.md`.
 
 ## Was die Function tut
 1. Access-Token via Refresh-Token erneuern (`accounts.zoho.eu`).
