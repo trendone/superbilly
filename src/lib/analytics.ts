@@ -114,6 +114,9 @@ export function parseProduct(raw: string | null | undefined): ProductCategory | 
 // KTR-Nummern, die als „Keynote" gelten und ausgefiltert werden können.
 export const KEYNOTE_KTR = ['50100', '50200'] as const
 
+// Standard-Tagessatz, wenn weder manuell gesetzt noch aus Mite ableitbar.
+export const STANDARD_DAY_RATE = 2000
+
 // ── Projekt-Auswertung ─────────────────────────────────────────────────────
 
 export type Health = 'over' | 'tight' | 'ok' | 'none'
@@ -123,15 +126,20 @@ export interface ProjectStat {
   bookedDays: number
   bookedToDateDays: number
   actualDays: number // aus actuals (Ist), 0 solange keine Zeiterfassung
-  istMiteDays: number // Ist aus Mite (project_actuals), Minuten/60/8
-  istMiteHours: number // Ist aus Mite in Stunden
-  istMiteEur: number | null // Ist-Umsatz aus Mite
-  hasMite: boolean // gibt es überhaupt Mite-Ist für dieses Projekt?
-  deltaSollIstDays: number | null // Soll (verplant) − Ist (Mite); null ohne Mite-Daten
-  budgetConsumedPct: number | null // Ist-€ (Mite) / Budget-€; null ohne Mite oder Budget
-  dayRateEur: number | null // verwendeter Tagessatz aus Mite (bei einem Satz exakt, bei mehreren stundengewichtet)
-  budgetDaysMite: number | null // Budget € / Tagessatz = verkaufte Tage
-  rateBreakdown: { rate: number; hours: number }[] // definierte Mite-Sätze × Stunden (für Tooltip)
+  // ── Controlling-Dreieck: Budget / Plan / Ist (in Tagen) ──
+  istMiteDays: number // Ist (getrackt aus Mite), Minuten/60/8
+  istMiteHours: number
+  istMiteEur: number | null
+  hasMite: boolean // gibt es Mite-Ist für dieses Projekt?
+  // Plan (geplante Tage) = bookedDays (Summe bookings). hasPlan = bookedDays > 0.
+  dayRateEur: number | null // effektiver Tagessatz (manuell > Mite > Standard 2.000)
+  rateSource: 'manuell' | 'mite' | 'standard' | null
+  budgetDaysEff: number | null // Budget € / effektiver Tagessatz = verfügbare Tage
+  budgetConsumedPct: number | null // Ist-€ / Budget-€
+  deltaIstBudgetDays: number | null // Budget(T) − Ist(T): Budget-Rest
+  deltaPlanBudgetDays: number | null // Budget(T) − Plan(T): noch verplanbar
+  deltaIstPlanDays: number | null // Ist(T) − Plan(T): Erfassung vs. Plan
+  rateBreakdown: { rate: number; hours: number }[] // definierte Mite-Sätze × Stunden (Tooltip)
   productLabel: string | null // Leistungskategorie (dominantes Produkt seiner Meilensteine)
   productKtr: string | null // KTR-Nummer der Kategorie (z. B. 50100)
   budgetDays: number | null
@@ -261,27 +269,35 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       .map((id) => empName.get(id) ?? '?')
       .sort()
 
-    // Ist aus Mite.
+    // ── Ist (getrackt aus Mite) ──
     const mite = miteByProject.get(project.id)
     const istMiteMinutes = mite?.minutes ?? 0
     const istMiteHours = istMiteMinutes / 60
     const istMiteDays = istMiteHours / HOURS_PER_DAY
     const hasMite = istMiteMinutes > 0
-    // Δ Soll/Ist = verplante Tage (Soll) − Ist (Mite). >0: weniger getrackt als geplant.
-    const deltaSollIstDays = hasMite ? bookedDays - istMiteDays : null
-    // Budget-Verbrauch = Ist-€ (Mite) / Budget-€.
     const budgetConsumedPct =
       hasMite && budgetEur != null && budgetEur > 0
         ? Math.round((mite!.revenue / budgetEur) * 100)
         : null
-    // Verwendeter Tagessatz = Ø abrechenbarer Stundensatz × 8; Budget in Tagen.
+
+    // ── Effektiver Tagessatz: manuell > Mite-Ist > Standard 2.000 ──
     const billableHours = (mite?.billableMinutes ?? 0) / 60
-    const dayRateEur =
+    const dayRateMite =
       hasMite && billableHours > 0 ? Math.round((mite!.revenue / billableHours) * 8) : null
-    const budgetDaysMite =
-      dayRateEur != null && dayRateEur > 0 && budgetEur != null
-        ? round1(budgetEur / dayRateEur)
-        : null
+    const manualRate = project.day_rate_eur != null ? Number(project.day_rate_eur) : null
+    const dayRateEur = manualRate ?? dayRateMite ?? STANDARD_DAY_RATE
+    const rateSource: ProjectStat['rateSource'] =
+      manualRate != null ? 'manuell' : dayRateMite != null ? 'mite' : 'standard'
+
+    // ── Budget in Tagen + die drei Deltas ──
+    const budgetDaysEff = budgetEur != null && dayRateEur > 0 ? round1(budgetEur / dayRateEur) : null
+    const hasPlan = bookedDays > 0
+    const deltaIstBudgetDays =
+      budgetDaysEff != null && hasMite ? round1(budgetDaysEff - istMiteDays) : null
+    const deltaPlanBudgetDays =
+      budgetDaysEff != null && hasPlan ? round1(budgetDaysEff - bookedDays) : null
+    const deltaIstPlanDays = hasMite && hasPlan ? round1(istMiteDays - bookedDays) : null
+
     const rateBreakdown = [...(ratesByProject.get(project.id) ?? new Map<number, number>())]
       .map(([rate, min]) => ({ rate, hours: round1(min / 60) }))
       .sort((a, b) => b.hours - a.hours)
@@ -296,10 +312,13 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       istMiteHours: round1(istMiteHours),
       istMiteEur: hasMite ? Math.round(mite!.revenue) : null,
       hasMite,
-      deltaSollIstDays: deltaSollIstDays != null ? round1(deltaSollIstDays) : null,
-      budgetConsumedPct,
       dayRateEur,
-      budgetDaysMite,
+      rateSource,
+      budgetDaysEff,
+      budgetConsumedPct,
+      deltaIstBudgetDays,
+      deltaPlanBudgetDays,
+      deltaIstPlanDays,
       rateBreakdown,
       productLabel: cat?.label ?? null,
       productKtr: cat?.ktr ?? null,

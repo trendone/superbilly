@@ -328,6 +328,7 @@ export type Database = {
           client: string | null
           color: string | null
           created_at: string
+          day_rate_eur: number | null
           end_date: string | null
           external_id: string | null
           id: string
@@ -345,6 +346,7 @@ export type Database = {
           client?: string | null
           color?: string | null
           created_at?: string
+          day_rate_eur?: number | null
           end_date?: string | null
           external_id?: string | null
           id?: string
@@ -362,6 +364,7 @@ export type Database = {
           client?: string | null
           color?: string | null
           created_at?: string
+          day_rate_eur?: number | null
           end_date?: string | null
           external_id?: string | null
           id?: string

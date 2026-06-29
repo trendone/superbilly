@@ -9,6 +9,7 @@ import {
   teamKpis,
   yearWindow,
   KEYNOTE_KTR,
+  STANDARD_DAY_RATE,
   type AnalyticsData,
   type Employee,
   type Health,
@@ -34,13 +35,23 @@ function heatColor(pct: number, hasCap: boolean): { bg: string; fg: string } {
 
 const healthTone: Record<Health, string> = { over: 'red', tight: 'amber', ok: 'green', none: 'dim' }
 
-/** Tooltip für die Budget-(T)-Zelle: zeigt die definierten Mite-Sätze (× Stunden). */
+/** Tooltip für die Tagessatz-Zelle: zeigt die definierten Mite-Sätze (× Stunden). */
 function rateTooltip(breakdown: { rate: number; hours: number }[], blended: number | null): string {
   if (!breakdown.length) return 'kein Mite-Tagessatz'
   if (breakdown.length === 1) return `Tagessatz ${eur.format(breakdown[0].rate)} (aus Mite)`
   const parts = breakdown.map((b) => `${eur.format(b.rate)} × ${b.hours} h`).join(' · ')
   return `Tagessätze: ${parts}${blended != null ? ` · Ø ${eur.format(blended)}` : ''}`
 }
+
+/** Quelle des Tagessatzes als Tooltip + Kurzmarker. */
+function rateTitle(p: ProjectStat): string {
+  if (p.rateSource === 'manuell') return 'Tagessatz manuell gesetzt'
+  if (p.rateSource === 'standard') return `Standard ${eur.format(STANDARD_DAY_RATE)} (kein Mite-Ist, keine manuelle Eingabe)`
+  return rateTooltip(p.rateBreakdown, p.dayRateEur)
+}
+const rateMark = (s: ProjectStat['rateSource']) => (s === 'manuell' ? ' ✎' : s === 'standard' ? ' ≈' : '')
+/** Tages-Delta als String mit Vorzeichen. */
+const dT = (v: number | null) => (v == null ? '–' : `${v >= 0 ? '+' : ''}${Math.round(v * 10) / 10} T`)
 
 function downloadCSV(filename: string, rows: (string | number)[][]) {
   const csv = rows
@@ -150,7 +161,7 @@ export default function Analytics() {
 
   function exportProjects() {
     const rows: (string | number)[][] = [
-      ['Projekt', 'Kunde', 'Leistungskategorie', 'KTR', 'Status', 'Gebucht (T)', 'Budget Plan (T)', 'Differenz (T)', 'Ist Mite (T)', 'Ist Mite (€)', 'Δ Soll/Ist (T)', 'Budget (€)', 'Tagessatz (€)', 'Budget Mite (T)', 'Verbrauch %', 'Fakturiert (€)', 'Offen (€)', 'Prognose'],
+      ['Projekt', 'Kunde', 'Leistungskategorie', 'KTR', 'Status', 'Budget (€)', 'Tagessatz (€)', 'Tagessatz-Quelle', 'Budget (T)', 'Plan (T)', 'Ist (T)', 'Ist (€)', 'Δ Ist/Budget (T)', 'Δ Plan/Budget (T)', 'Δ Ist/Plan (T)', 'Verbrauch %', 'Prognose'],
     ]
     for (const p of projects)
       rows.push([
@@ -159,18 +170,17 @@ export default function Analytics() {
         p.productLabel ?? '',
         p.productKtr ?? '',
         p.project.status,
-        p.bookedDays,
-        p.budgetDays ?? '',
-        p.diffDays ?? '',
-        p.hasMite ? p.istMiteDays : '',
-        p.istMiteEur ?? '',
-        p.deltaSollIstDays ?? '',
         p.budgetEur ?? '',
         p.dayRateEur ?? '',
-        p.budgetDaysMite ?? '',
+        p.rateSource ?? '',
+        p.budgetDaysEff ?? '',
+        p.bookedDays || '',
+        p.hasMite ? p.istMiteDays : '',
+        p.istMiteEur ?? '',
+        p.deltaIstBudgetDays ?? '',
+        p.deltaPlanBudgetDays ?? '',
+        p.deltaIstPlanDays ?? '',
         p.budgetConsumedPct ?? '',
-        p.invoicedEur,
-        p.openEur,
         p.forecast,
       ])
     downloadCSV('auswertung-projekte.csv', rows)
@@ -263,22 +273,19 @@ function ProjectsView({
 }) {
   const tot = projects.reduce(
     (a, p) => ({
-      booked: a.booked + p.bookedDays,
-      budget: a.budget + (p.budgetDays ?? 0),
-      istMite: a.istMite + p.istMiteDays,
-      bookedMite: a.bookedMite + (p.hasMite ? p.bookedDays : 0), // Soll nur der Mite-Projekte
-      istMiteEur: a.istMiteEur + (p.istMiteEur ?? 0),
-      budgetEurMite: a.budgetEurMite + (p.budgetConsumedPct != null ? (p.budgetEur ?? 0) : 0),
-      budgetDaysMite: a.budgetDaysMite + (p.budgetDaysMite ?? 0),
       budgetEur: a.budgetEur + (p.budgetEur ?? 0),
-      invoiced: a.invoiced + p.invoicedEur,
-      open: a.open + p.openEur,
+      budgetDays: a.budgetDays + (p.budgetDaysEff ?? 0),
+      plan: a.plan + p.bookedDays,
+      ist: a.ist + p.istMiteDays,
+      dIstBud: a.dIstBud + (p.deltaIstBudgetDays ?? 0),
+      dPlanBud: a.dPlanBud + (p.deltaPlanBudgetDays ?? 0),
+      dIstPlan: a.dIstPlan + (p.deltaIstPlanDays ?? 0),
+      istEur: a.istEur + (p.istMiteEur ?? 0),
+      budEurMite: a.budEurMite + (p.budgetConsumedPct != null ? (p.budgetEur ?? 0) : 0),
     }),
-    { booked: 0, budget: 0, istMite: 0, bookedMite: 0, istMiteEur: 0, budgetEurMite: 0, budgetDaysMite: 0, budgetEur: 0, invoiced: 0, open: 0 },
+    { budgetEur: 0, budgetDays: 0, plan: 0, ist: 0, dIstBud: 0, dPlanBud: 0, dIstPlan: 0, istEur: 0, budEurMite: 0 },
   )
-  const totDiff = tot.budget - tot.booked
-  const totDeltaSollIst = tot.bookedMite - tot.istMite
-  const totConsumedPct = tot.budgetEurMite > 0 ? Math.round((tot.istMiteEur / tot.budgetEurMite) * 100) : null
+  const totConsumedPct = tot.budEurMite > 0 ? Math.round((tot.istEur / tot.budEurMite) * 100) : null
 
   return (
     <section className="ana-section">
@@ -323,98 +330,82 @@ function ProjectsView({
           <thead>
             <tr>
               <th>Projekt</th>
-              <th>Budget-Auslastung</th>
-              <th className="num">Differenz</th>
-              <th className="num">Ist (Mite)</th>
-              <th className="num">Δ Soll/Ist</th>
               <th className="num">Budget €</th>
+              <th className="num">Tagessatz</th>
               <th className="num">Budget (T)</th>
+              <th className="num">Plan (T)</th>
+              <th className="num">Ist (T)</th>
+              <th className="num" title="Budget (T) − Ist (T)">Δ Ist/Budget</th>
+              <th className="num" title="Budget (T) − Plan (T)">Δ Plan/Budget</th>
+              <th className="num" title="Ist (T) − Plan (T)">Δ Ist/Plan</th>
               <th className="num">Verbrauch %</th>
-              <th className="num">Offen €</th>
               <th>Prognose</th>
               <th>Mitarbeiter</th>
             </tr>
           </thead>
           <tbody>
-            {projects.map((p) => {
-              const diffTone = p.diffDays == null ? '' : p.diffDays < 0 ? 'red' : p.diffDays === 0 ? 'amber' : 'green'
-              const over = (p.budgetPct ?? 0) > 100
-              return (
-                <tr key={p.project.id}>
-                  <td>
-                    <span className="dot" style={{ background: p.project.color ?? '#94a3b8' }} />
-                    {p.project.name}
-                    {(p.project.client || p.productLabel) && (
-                      <div className="dim">{[p.project.client, p.productLabel].filter(Boolean).join(' · ')}</div>
-                    )}
-                  </td>
-                  <td className="bar-cell">
-                    {p.budgetPct == null ? (
-                      <span className="dim">{p.bookedDays} T gebucht · kein Budget</span>
-                    ) : (
-                      <>
-                        <div className="ba-bar">
-                          <span style={{ width: `${Math.min(p.budgetPct, 100)}%`, background: over ? 'var(--red)' : 'var(--accent)' }} />
-                        </div>
-                        <div className="dim">
-                          {p.bookedDays} / {p.budgetDays} T · {p.budgetPct}%
-                        </div>
-                      </>
-                    )}
-                  </td>
-                  <td className={`num ${diffTone}`}>
-                    {p.diffDays == null ? '–' : `${p.diffDays >= 0 ? '+' : ''}${p.diffDays} T`}
-                  </td>
-                  <td className="num dim" title={p.hasMite ? `${p.istMiteHours} h${p.istMiteEur != null ? ` · ${eur.format(p.istMiteEur)}` : ''}` : 'keine Mite-Ist-Zeiten'}>
-                    {p.hasMite ? `${p.istMiteDays} T` : '–'}
-                  </td>
-                  <td className={`num ${p.deltaSollIstDays == null ? '' : p.deltaSollIstDays < 0 ? 'red' : 'green'}`}>
-                    {p.deltaSollIstDays == null ? '–' : `${p.deltaSollIstDays >= 0 ? '+' : ''}${p.deltaSollIstDays} T`}
-                  </td>
-                  <td className="num dim">{p.budgetEur != null ? eur.format(p.budgetEur) : '–'}</td>
-                  <td className="num dim" title={rateTooltip(p.rateBreakdown, p.dayRateEur)}>
-                    {p.budgetDaysMite != null ? `${p.budgetDaysMite} T` : '–'}
-                  </td>
-                  <td className={`num ${p.budgetConsumedPct == null ? 'dim' : p.budgetConsumedPct > 100 ? 'red' : p.budgetConsumedPct >= 90 ? 'amber' : 'green'}`}>
-                    {p.budgetConsumedPct == null ? '–' : `${p.budgetConsumedPct}%`}
-                  </td>
-                  <td className="num dim">{p.budgetEur != null ? eur.format(p.openEur) : '–'}</td>
-                  <td>
-                    <span className={`badge ${healthTone[p.health]}`}>{p.forecast}</span>
-                  </td>
-                  <td className="dim">{p.employeeNames.join(', ') || '–'}</td>
-                </tr>
-              )
-            })}
+            {projects.map((p) => (
+              <tr key={p.project.id}>
+                <td>
+                  <span className="dot" style={{ background: p.project.color ?? '#94a3b8' }} />
+                  {p.project.name}
+                  {(p.project.client || p.productLabel) && (
+                    <div className="dim">{[p.project.client, p.productLabel].filter(Boolean).join(' · ')}</div>
+                  )}
+                </td>
+                <td className="num dim">{p.budgetEur != null ? eur.format(p.budgetEur) : '–'}</td>
+                <td className="num dim" title={rateTitle(p)}>
+                  {eur.format(p.dayRateEur ?? STANDARD_DAY_RATE)}{rateMark(p.rateSource)}
+                </td>
+                <td className="num dim">{p.budgetDaysEff != null ? `${p.budgetDaysEff} T` : '–'}</td>
+                <td className="num dim">{p.bookedDays > 0 ? `${p.bookedDays} T` : '–'}</td>
+                <td className="num dim" title={p.hasMite ? `${p.istMiteHours} h${p.istMiteEur != null ? ` · ${eur.format(p.istMiteEur)}` : ''}` : 'keine Mite-Ist-Zeiten'}>
+                  {p.hasMite ? `${p.istMiteDays} T` : '–'}
+                </td>
+                <td className={`num ${p.deltaIstBudgetDays == null ? 'dim' : p.deltaIstBudgetDays < 0 ? 'red' : 'green'}`}>
+                  {dT(p.deltaIstBudgetDays)}
+                </td>
+                <td className={`num ${p.deltaPlanBudgetDays == null ? 'dim' : p.deltaPlanBudgetDays < 0 ? 'red' : 'green'}`}>
+                  {dT(p.deltaPlanBudgetDays)}
+                </td>
+                <td className={`num ${p.deltaIstPlanDays == null ? 'dim' : p.deltaIstPlanDays < 0 ? 'amber' : ''}`}>
+                  {dT(p.deltaIstPlanDays)}
+                </td>
+                <td className={`num ${p.budgetConsumedPct == null ? 'dim' : p.budgetConsumedPct > 100 ? 'red' : p.budgetConsumedPct >= 90 ? 'amber' : 'green'}`}>
+                  {p.budgetConsumedPct == null ? '–' : `${p.budgetConsumedPct}%`}
+                </td>
+                <td>
+                  <span className={`badge ${healthTone[p.health]}`}>{p.forecast}</span>
+                </td>
+                <td className="dim">{p.employeeNames.join(', ') || '–'}</td>
+              </tr>
+            ))}
           </tbody>
           <tfoot>
             <tr>
               <td>Summe</td>
-              <td className="dim">{Math.round(tot.booked * 10) / 10} / {Math.round(tot.budget * 10) / 10} T</td>
-              <td className={`num ${totDiff < 0 ? 'red' : 'green'}`}>
-                {totDiff >= 0 ? '+' : ''}{Math.round(totDiff * 10) / 10} T
-              </td>
-              <td className="num dim">{tot.istMite > 0 ? `${Math.round(tot.istMite * 10) / 10} T` : '–'}</td>
-              <td className={`num ${tot.istMite === 0 ? 'dim' : totDeltaSollIst < 0 ? 'red' : 'green'}`}>
-                {tot.istMite === 0 ? '–' : `${totDeltaSollIst >= 0 ? '+' : ''}${Math.round(totDeltaSollIst * 10) / 10} T`}
-              </td>
               <td className="num dim">{eur.format(tot.budgetEur)}</td>
-              <td className="num dim">{tot.budgetDaysMite > 0 ? `${Math.round(tot.budgetDaysMite * 10) / 10} T` : '–'}</td>
+              <td className="num dim">–</td>
+              <td className="num dim">{tot.budgetDays > 0 ? `${Math.round(tot.budgetDays * 10) / 10} T` : '–'}</td>
+              <td className="num dim">{tot.plan > 0 ? `${Math.round(tot.plan * 10) / 10} T` : '–'}</td>
+              <td className="num dim">{tot.ist > 0 ? `${Math.round(tot.ist * 10) / 10} T` : '–'}</td>
+              <td className={`num ${tot.dIstBud < 0 ? 'red' : 'green'}`}>{dT(tot.dIstBud)}</td>
+              <td className={`num ${tot.dPlanBud < 0 ? 'red' : 'green'}`}>{dT(tot.dPlanBud)}</td>
+              <td className={`num ${tot.dIstPlan < 0 ? 'amber' : ''}`}>{dT(tot.dIstPlan)}</td>
               <td className={`num ${totConsumedPct == null ? 'dim' : totConsumedPct > 100 ? 'red' : totConsumedPct >= 90 ? 'amber' : 'green'}`}>
                 {totConsumedPct == null ? '–' : `${totConsumedPct}%`}
               </td>
-              <td className="num dim">{eur.format(tot.open)}</td>
-              <td colSpan={2} className="dim">fakturiert {eur.format(tot.invoiced)}</td>
+              <td colSpan={2} className="dim"></td>
             </tr>
           </tfoot>
         </table>
         </div>
       )}
       <p className="hint">
-        Ist (Mite) = getrackte Zeit aus Mite (à 8 h/Tag), zugeordnet über die Angebotsnummer.
-        Δ Soll/Ist = verplante Tage − Ist; <span className="red">rot</span> = mehr getrackt als geplant. „–" = keine Mite-Zeiten.
-        Verbrauch % = Ist-€ (Mite) / Budget-€; <span className="red">rot</span> &gt; 100 %.
-        Budget (T) = Budget-€ / Tagessatz (verwendeter Mite-Satz, im Tooltip).
+        Drei Größen je Projekt: <b>Budget (T)</b> = Budget-€ / Tagessatz · <b>Plan (T)</b> = verplante Tage ·
+        <b> Ist (T)</b> = getrackte Zeit aus Mite. Tagessatz: <i>aus Mite-Ist</i>, sonst Standard {eur.format(STANDARD_DAY_RATE)} (≈),
+        manuell pro Projekt überschreibbar (✎). Deltas: <b>Ist/Budget</b> = Budget-Rest (<span className="red">rot</span> = über Budget),
+        <b> Plan/Budget</b> = noch verplanbar, <b>Ist/Plan</b> = Erfassung vs. Plan (<span className="amber">gelb</span> = weniger getrackt als geplant).
       </p>
     </section>
   )

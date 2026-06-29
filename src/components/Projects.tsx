@@ -382,6 +382,7 @@ function ProjectForm({
     end_date: string | null
     budget_days: number | null
     budget_eur: number | null
+    day_rate_eur: number | null
   }) => Promise<void>
   onCancel: () => void
 }) {
@@ -396,6 +397,9 @@ function ProjectForm({
   )
   const [budgetEur, setBudgetEur] = useState(
     project.budget_eur != null ? String(project.budget_eur) : '',
+  )
+  const [dayRate, setDayRate] = useState(
+    project.day_rate_eur != null ? String(project.day_rate_eur) : '',
   )
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -420,6 +424,7 @@ function ProjectForm({
         end_date: end || null,
         budget_days: num(budgetDays),
         budget_eur: num(budgetEur),
+        day_rate_eur: num(dayRate),
       })
     } catch (e) {
       setErr((e as Error).message)
@@ -474,6 +479,15 @@ function ProjectForm({
             inputMode="decimal"
             value={budgetEur}
             onChange={(e) => setBudgetEur(e.target.value)}
+          />
+        </label>
+        <label>
+          Tagessatz (EUR)
+          <input
+            inputMode="decimal"
+            value={dayRate}
+            placeholder="leer = aus Mite / Standard 2000"
+            onChange={(e) => setDayRate(e.target.value)}
           />
         </label>
       </div>
