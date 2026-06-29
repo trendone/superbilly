@@ -17,6 +17,7 @@ export type Booking = Database['public']['Tables']['bookings']['Row']
 export type HoursPeriod = Database['public']['Tables']['employee_hours_periods']['Row']
 export type Milestone = Database['public']['Tables']['milestones']['Row']
 export type Actual = Database['public']['Tables']['actuals']['Row']
+export type ProjectActual = Database['public']['Tables']['project_actuals']['Row']
 
 // System-Kategorien, die echte Abwesenheit darstellen (mindern die Verfügbarkeit).
 export const ABSENCE_CATEGORIES = ['Urlaub', 'Krank', 'Frei', 'Kurzarbeit'] as const
@@ -31,19 +32,21 @@ export interface AnalyticsData {
   hoursPeriods: HoursPeriod[]
   milestones: Milestone[]
   actuals: Actual[]
+  projectActuals: ProjectActual[] // Ist-Zeiten aus Mite (project_actuals)
 }
 
 /** Lädt alle Daten, die beide Auswertungen brauchen, in einem Rutsch. */
 export async function fetchAnalytics(): Promise<AnalyticsData> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
 
-  const [emp, proj, book, periods, ms, act] = await Promise.all([
+  const [emp, proj, book, periods, ms, act, pact] = await Promise.all([
     supabase.from('employees').select('*').eq('active', true).order('name'),
     supabase.from('projects').select('*').order('name'),
     supabase.from('bookings').select('*'),
     supabase.from('employee_hours_periods').select('*'),
     supabase.from('milestones').select('*'),
     supabase.from('actuals').select('*'),
+    supabase.from('project_actuals').select('*'),
   ])
 
   if (emp.error) throw emp.error
@@ -52,6 +55,7 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
   if (periods.error) throw periods.error
   if (ms.error) throw ms.error
   if (act.error) throw act.error
+  if (pact.error) throw pact.error
 
   return {
     employees: emp.data,
@@ -60,6 +64,7 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
     hoursPeriods: periods.data,
     milestones: ms.data,
     actuals: act.data,
+    projectActuals: pact.data,
   }
 }
 
@@ -103,6 +108,11 @@ export interface ProjectStat {
   bookedDays: number
   bookedToDateDays: number
   actualDays: number // aus actuals (Ist), 0 solange keine Zeiterfassung
+  istMiteDays: number // Ist aus Mite (project_actuals), Minuten/60/8
+  istMiteHours: number // Ist aus Mite in Stunden
+  istMiteEur: number | null // Ist-Umsatz aus Mite
+  hasMite: boolean // gibt es überhaupt Mite-Ist für dieses Projekt?
+  deltaSollIstDays: number | null // Soll (verplant) − Ist (Mite); null ohne Mite-Daten
   budgetDays: number | null
   diffDays: number | null
   budgetPct: number | null // gebucht / Budget
@@ -144,6 +154,15 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
     const pid = a.booking_id ? bookingProject.get(a.booking_id) : undefined
     if (!pid) continue
     actualHByProject.set(pid, (actualHByProject.get(pid) ?? 0) + Number(a.hours))
+  }
+
+  // Ist aus Mite (project_actuals): Minuten + Umsatz je Projekt.
+  const miteByProject = new Map<string, { minutes: number; revenue: number }>()
+  for (const pa of data.projectActuals) {
+    const cur = miteByProject.get(pa.project_id) ?? { minutes: 0, revenue: 0 }
+    cur.minutes += Number(pa.minutes ?? 0)
+    cur.revenue += Number(pa.revenue_eur ?? 0)
+    miteByProject.set(pa.project_id, cur)
   }
 
   const projects = data.projects.filter((p) => !p.is_system)
@@ -192,11 +211,25 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       .map((id) => empName.get(id) ?? '?')
       .sort()
 
+    // Ist aus Mite.
+    const mite = miteByProject.get(project.id)
+    const istMiteMinutes = mite?.minutes ?? 0
+    const istMiteHours = istMiteMinutes / 60
+    const istMiteDays = istMiteHours / HOURS_PER_DAY
+    const hasMite = istMiteMinutes > 0
+    // Δ Soll/Ist = verplante Tage (Soll) − Ist (Mite). >0: weniger getrackt als geplant.
+    const deltaSollIstDays = hasMite ? bookedDays - istMiteDays : null
+
     return {
       project,
       bookedDays: round1(bookedDays),
       bookedToDateDays: round1(bookedToDateDays),
       actualDays: round1((actualHByProject.get(project.id) ?? 0) / HOURS_PER_DAY),
+      istMiteDays: round1(istMiteDays),
+      istMiteHours: round1(istMiteHours),
+      istMiteEur: hasMite ? Math.round(mite!.revenue) : null,
+      hasMite,
+      deltaSollIstDays: deltaSollIstDays != null ? round1(deltaSollIstDays) : null,
       budgetDays,
       diffDays: diffDays != null ? round1(diffDays) : null,
       budgetPct,

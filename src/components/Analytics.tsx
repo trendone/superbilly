@@ -98,6 +98,7 @@ export default function Analytics() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_actuals' }, () => load())
       .subscribe()
 
     return () => {
@@ -129,7 +130,7 @@ export default function Analytics() {
 
   function exportProjects() {
     const rows: (string | number)[][] = [
-      ['Projekt', 'Kunde', 'Status', 'Gebucht (T)', 'Budget (T)', 'Differenz (T)', 'Ist (T)', 'Budget (€)', 'Fakturiert (€)', 'Offen (€)', 'Prognose'],
+      ['Projekt', 'Kunde', 'Status', 'Gebucht (T)', 'Budget (T)', 'Differenz (T)', 'Ist Mite (T)', 'Ist Mite (€)', 'Δ Soll/Ist (T)', 'Budget (€)', 'Fakturiert (€)', 'Offen (€)', 'Prognose'],
     ]
     for (const p of projects)
       rows.push([
@@ -139,7 +140,9 @@ export default function Analytics() {
         p.bookedDays,
         p.budgetDays ?? '',
         p.diffDays ?? '',
-        p.actualDays,
+        p.hasMite ? p.istMiteDays : '',
+        p.istMiteEur ?? '',
+        p.deltaSollIstDays ?? '',
         p.budgetEur ?? '',
         p.invoicedEur,
         p.openEur,
@@ -228,14 +231,16 @@ function ProjectsView({
     (a, p) => ({
       booked: a.booked + p.bookedDays,
       budget: a.budget + (p.budgetDays ?? 0),
-      ist: a.ist + p.actualDays,
+      istMite: a.istMite + p.istMiteDays,
+      bookedMite: a.bookedMite + (p.hasMite ? p.bookedDays : 0), // Soll nur der Mite-Projekte
       budgetEur: a.budgetEur + (p.budgetEur ?? 0),
       invoiced: a.invoiced + p.invoicedEur,
       open: a.open + p.openEur,
     }),
-    { booked: 0, budget: 0, ist: 0, budgetEur: 0, invoiced: 0, open: 0 },
+    { booked: 0, budget: 0, istMite: 0, bookedMite: 0, budgetEur: 0, invoiced: 0, open: 0 },
   )
   const totDiff = tot.budget - tot.booked
+  const totDeltaSollIst = tot.bookedMite - tot.istMite
 
   return (
     <section className="ana-section">
@@ -272,7 +277,8 @@ function ProjectsView({
               <th>Projekt</th>
               <th>Budget-Auslastung</th>
               <th className="num">Differenz</th>
-              <th className="num">Ist</th>
+              <th className="num">Ist (Mite)</th>
+              <th className="num">Δ Soll/Ist</th>
               <th className="num">Budget €</th>
               <th className="num">Offen €</th>
               <th>Prognose</th>
@@ -307,7 +313,12 @@ function ProjectsView({
                   <td className={`num ${diffTone}`}>
                     {p.diffDays == null ? '–' : `${p.diffDays >= 0 ? '+' : ''}${p.diffDays} T`}
                   </td>
-                  <td className="num dim">{p.actualDays > 0 ? `${p.actualDays} T` : '–'}</td>
+                  <td className="num dim" title={p.hasMite ? `${p.istMiteHours} h${p.istMiteEur != null ? ` · ${eur.format(p.istMiteEur)}` : ''}` : 'keine Mite-Ist-Zeiten'}>
+                    {p.hasMite ? `${p.istMiteDays} T` : '–'}
+                  </td>
+                  <td className={`num ${p.deltaSollIstDays == null ? '' : p.deltaSollIstDays < 0 ? 'red' : 'green'}`}>
+                    {p.deltaSollIstDays == null ? '–' : `${p.deltaSollIstDays >= 0 ? '+' : ''}${p.deltaSollIstDays} T`}
+                  </td>
                   <td className="num dim">{p.budgetEur != null ? eur.format(p.budgetEur) : '–'}</td>
                   <td className="num dim">{p.budgetEur != null ? eur.format(p.openEur) : '–'}</td>
                   <td>
@@ -325,7 +336,10 @@ function ProjectsView({
               <td className={`num ${totDiff < 0 ? 'red' : 'green'}`}>
                 {totDiff >= 0 ? '+' : ''}{Math.round(totDiff * 10) / 10} T
               </td>
-              <td className="num dim">{tot.ist > 0 ? `${Math.round(tot.ist * 10) / 10} T` : '–'}</td>
+              <td className="num dim">{tot.istMite > 0 ? `${Math.round(tot.istMite * 10) / 10} T` : '–'}</td>
+              <td className={`num ${tot.istMite === 0 ? 'dim' : totDeltaSollIst < 0 ? 'red' : 'green'}`}>
+                {tot.istMite === 0 ? '–' : `${totDeltaSollIst >= 0 ? '+' : ''}${Math.round(totDeltaSollIst * 10) / 10} T`}
+              </td>
               <td className="num dim">{eur.format(tot.budgetEur)}</td>
               <td className="num dim">{eur.format(tot.open)}</td>
               <td colSpan={2} className="dim">fakturiert {eur.format(tot.invoiced)}</td>
@@ -334,7 +348,10 @@ function ProjectsView({
         </table>
         </div>
       )}
-      <p className="hint">Ist-Tage aus erfassten Stunden (à 8 h) – 0, solange keine Zeiterfassung vorliegt.</p>
+      <p className="hint">
+        Ist (Mite) = getrackte Zeit aus Mite (à 8 h/Tag), zugeordnet über die Angebotsnummer.
+        Δ Soll/Ist = verplante Tage − Ist; <span className="red">rot</span> = mehr getrackt als geplant. „–" = keine Mite-Zeiten.
+      </p>
     </section>
   )
 }

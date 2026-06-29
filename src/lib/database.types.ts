@@ -236,6 +236,79 @@ export type Database = {
           },
         ]
       }
+      project_actuals: {
+        Row: {
+          minutes: number
+          period: string
+          project_id: string
+          revenue_eur: number | null
+          service_code: string
+          service_name: string | null
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          minutes?: number
+          period: string
+          project_id: string
+          revenue_eur?: number | null
+          service_code?: string
+          service_name?: string | null
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          minutes?: number
+          period?: string
+          project_id?: string
+          revenue_eur?: number | null
+          service_code?: string
+          service_name?: string | null
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_actuals_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_external_map: {
+        Row: {
+          created_at: string
+          external_id: string
+          note: string | null
+          project_id: string
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          external_id: string
+          note?: string | null
+          project_id: string
+          source: string
+        }
+        Update: {
+          created_at?: string
+          external_id?: string
+          note?: string | null
+          project_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_external_map_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           budget_days: number | null
@@ -248,6 +321,7 @@ export type Database = {
           id: string
           is_system: boolean
           name: string
+          offer_number: string | null
           probability: number | null
           source: string
           start_date: string | null
@@ -264,6 +338,7 @@ export type Database = {
           id?: string
           is_system?: boolean
           name: string
+          offer_number?: string | null
           probability?: number | null
           source?: string
           start_date?: string | null
@@ -280,6 +355,7 @@ export type Database = {
           id?: string
           is_system?: boolean
           name?: string
+          offer_number?: string | null
           probability?: number | null
           source?: string
           start_date?: string | null
