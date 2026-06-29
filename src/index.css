@@ -554,6 +554,12 @@ code {
   color: var(--muted);
   background: #f8fafc;
 }
+.ana-table thead th.sortable:hover {
+  color: var(--accent);
+}
+.ana-table thead th.sorted {
+  color: var(--accent);
+}
 .ana-table tbody tr:last-child td {
   border-bottom: none;
 }

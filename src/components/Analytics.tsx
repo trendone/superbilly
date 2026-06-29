@@ -75,7 +75,37 @@ function downloadCSV(filename: string, rows: (string | number)[][]) {
 
 type SubTab = 'projekte' | 'mitarbeiter'
 type Period = '6m' | 'year'
-type Sort = 'health' | 'name' | 'diff' | 'util'
+type SortKey =
+  | 'name' | 'budgetEur' | 'dayRate' | 'budgetDays' | 'plan' | 'ist'
+  | 'dIstBud' | 'dPlanBud' | 'dIstPlan' | 'verbrauch' | 'forecast' | 'mitarbeiter'
+type SortDir = 'asc' | 'desc'
+
+// Sortier-Wert je Spalte (null = ans Ende, unabhängig von der Richtung).
+const SORT_VAL: Record<SortKey, (p: ProjectStat) => number | string | null> = {
+  name: (p) => p.project.name.toLowerCase(),
+  budgetEur: (p) => p.budgetEur,
+  dayRate: (p) => p.dayRateEur,
+  budgetDays: (p) => p.budgetDaysEff,
+  plan: (p) => (p.bookedDays > 0 ? p.bookedDays : null),
+  ist: (p) => (p.hasMite ? p.istMiteDays : null),
+  dIstBud: (p) => p.deltaIstBudgetDays,
+  dPlanBud: (p) => p.deltaPlanBudgetDays,
+  dIstPlan: (p) => p.deltaIstPlanDays,
+  verbrauch: (p) => p.budgetConsumedPct,
+  forecast: (p) => p.forecast.toLowerCase(),
+  mitarbeiter: (p) => p.employeeNames.length || null,
+}
+function cmpBy(key: SortKey, dir: SortDir) {
+  return (a: ProjectStat, b: ProjectStat) => {
+    const va = SORT_VAL[key](a)
+    const vb = SORT_VAL[key](b)
+    if (va == null && vb == null) return a.project.name.localeCompare(b.project.name)
+    if (va == null) return 1
+    if (vb == null) return -1
+    const r = typeof va === 'string' ? va.localeCompare(vb as string) : (va as number) - (vb as number)
+    return dir === 'asc' ? r : -r
+  }
+}
 type StatusFilter = 'alle' | 'aktiv' | 'akquise' | 'pausiert' | 'abgeschlossen'
 
 interface Selected {
@@ -95,7 +125,16 @@ export default function Analytics() {
   const [selected, setSelected] = useState<Selected | null>(null)
 
   // Projekt-Controls
-  const [sort, setSort] = useState<Sort>('health')
+  const [sortKey, setSortKey] = useState<SortKey>('budgetEur')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  // Header-Klick: gleiche Spalte → Richtung kippen; neue Spalte → sinnvoller Default.
+  function onSort(k: SortKey) {
+    if (k === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else {
+      setSortKey(k)
+      setSortDir(k === 'name' || k === 'forecast' ? 'asc' : 'desc')
+    }
+  }
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('alle')
   const [catFilter, setCatFilter] = useState<string>('no-keynote') // Default: Keynotes ausgeblendet
 
@@ -148,14 +187,8 @@ export default function Analytics() {
     if (catFilter === 'no-keynote')
       list = list.filter((p) => !p.productKtr || !(KEYNOTE_KTR as readonly string[]).includes(p.productKtr))
     else if (catFilter !== 'alle') list = list.filter((p) => p.productLabel === catFilter)
-    const order: Record<Health, number> = { over: 0, tight: 1, ok: 2, none: 3 }
-    return [...list].sort((a, b) => {
-      if (sort === 'name') return a.project.name.localeCompare(b.project.name)
-      if (sort === 'diff') return (a.diffDays ?? Infinity) - (b.diffDays ?? Infinity)
-      if (sort === 'util') return (b.budgetPct ?? -1) - (a.budgetPct ?? -1)
-      return order[a.health] - order[b.health] || a.project.name.localeCompare(b.project.name)
-    })
-  }, [allStats, sort, statusFilter, catFilter])
+    return [...list].sort(cmpBy(sortKey, sortDir))
+  }, [allStats, sortKey, sortDir, statusFilter, catFilter])
 
   const kpis = useMemo(() => (data ? teamKpis(data) : null), [data])
 
@@ -223,8 +256,9 @@ export default function Analytics() {
       {data && sub === 'projekte' && (
         <ProjectsView
           projects={projects}
-          sort={sort}
-          setSort={setSort}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={onSort}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
           catFilter={catFilter}
@@ -254,8 +288,9 @@ export default function Analytics() {
 
 function ProjectsView({
   projects,
-  sort,
-  setSort,
+  sortKey,
+  sortDir,
+  onSort,
   statusFilter,
   setStatusFilter,
   catFilter,
@@ -263,14 +298,27 @@ function ProjectsView({
   categories,
 }: {
   projects: ProjectStat[]
-  sort: Sort
-  setSort: (s: Sort) => void
+  sortKey: SortKey
+  sortDir: SortDir
+  onSort: (k: SortKey) => void
   statusFilter: StatusFilter
   setStatusFilter: (s: StatusFilter) => void
   catFilter: string
   setCatFilter: (s: string) => void
   categories: string[]
 }) {
+  // Klickbarer Spaltenkopf mit Sortier-Indikator.
+  const Th = (k: SortKey, label: string, numeric = false) => (
+    <th
+      className={`${numeric ? 'num ' : ''}sortable${sortKey === k ? ' sorted' : ''}`}
+      onClick={() => onSort(k)}
+      style={{ cursor: 'pointer', userSelect: 'none' }}
+      title="Zum Sortieren klicken"
+    >
+      {label}
+      {sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+    </th>
+  )
   const tot = projects.reduce(
     (a, p) => ({
       budgetEur: a.budgetEur + (p.budgetEur ?? 0),
@@ -310,16 +358,7 @@ function ProjectsView({
             ))}
           </select>
         </label>
-        <label>
-          Sortierung{' '}
-          <select className="field-inline" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-            <option value="health">Überbucht zuerst</option>
-            <option value="util">Auslastung</option>
-            <option value="diff">Differenz</option>
-            <option value="name">Name</option>
-          </select>
-        </label>
-        <span className="dim">{projects.length} Projekte</span>
+        <span className="dim">{projects.length} Projekte · Spalte klicken zum Sortieren</span>
       </div>
 
       {projects.length === 0 ? (
@@ -329,18 +368,18 @@ function ProjectsView({
         <table className="ana-table">
           <thead>
             <tr>
-              <th>Projekt</th>
-              <th className="num">Budget €</th>
-              <th className="num">Tagessatz</th>
-              <th className="num">Budget (T)</th>
-              <th className="num">Plan (T)</th>
-              <th className="num">Ist (T)</th>
-              <th className="num" title="Budget (T) − Ist (T)">Δ Ist/Budget</th>
-              <th className="num" title="Budget (T) − Plan (T)">Δ Plan/Budget</th>
-              <th className="num" title="Ist (T) − Plan (T)">Δ Ist/Plan</th>
-              <th className="num">Verbrauch %</th>
-              <th>Prognose</th>
-              <th>Mitarbeiter</th>
+              {Th('name', 'Projekt')}
+              {Th('budgetEur', 'Budget €', true)}
+              {Th('dayRate', 'Tagessatz', true)}
+              {Th('budgetDays', 'Budget (T)', true)}
+              {Th('plan', 'Plan (T)', true)}
+              {Th('ist', 'Ist (T)', true)}
+              {Th('dIstBud', 'Δ Ist/Budget', true)}
+              {Th('dPlanBud', 'Δ Plan/Budget', true)}
+              {Th('dIstPlan', 'Δ Ist/Plan', true)}
+              {Th('verbrauch', 'Verbrauch %', true)}
+              {Th('forecast', 'Prognose')}
+              {Th('mitarbeiter', 'Mitarbeiter')}
             </tr>
           </thead>
           <tbody>

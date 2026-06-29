@@ -46,13 +46,12 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">superbilly</div>
-        <div className="brand-sub">Ressourcenplanung</div>
         <nav className="tabs">
           <button
             className={`tab${tab === 'raster' ? ' active' : ''}`}
             onClick={() => setTab('raster')}
           >
-            Buchungsraster
+            Billy
           </button>
           <button
             className={`tab${tab === 'projekte' ? ' active' : ''}`}
@@ -64,7 +63,7 @@ export default function App() {
             className={`tab${tab === 'dashboard' ? ' active' : ''}`}
             onClick={() => setTab('dashboard')}
           >
-            Rechnungen
+            Meilensteine
           </button>
           <button
             className={`tab${tab === 'auswertung' ? ' active' : ''}`}
