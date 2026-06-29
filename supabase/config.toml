@@ -381,6 +381,11 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# Pull-Sync Zoho Abgrenzungen → milestones. Per x-sync-secret-Header geschützt.
+[functions.sync-abgrenzungen]
+enabled = true
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
