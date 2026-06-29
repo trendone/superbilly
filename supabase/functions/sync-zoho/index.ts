@@ -9,6 +9,8 @@
 //   from Quotes
 //   where Quote_Stage in ('Beauftragt','Teilweise beauftragt')
 //     and Deal_Name.Leistungsbereich = 'Consulting'
+//   Leistungsdatum >= ZOHO_SINCE (Default 2025-10-01) wird clientseitig gefiltert
+//   (COQL erlaubt keinen Range-Vergleich auf verknüpften Feldern).
 //
 // Warum COQL: Die Such-API ist bei 2000 Treffern gedeckelt (es gibt >2000
 // beauftragte Angebote insgesamt) und kann nicht über die Modulgrenze nach
@@ -25,6 +27,8 @@ const env = (k: string): string => {
 
 const ACCOUNTS = Deno.env.get("ZOHO_ACCOUNTS_DOMAIN") ?? "accounts.zoho.eu";
 const ZOHO_API = Deno.env.get("ZOHO_API_DOMAIN") ?? "www.zohoapis.eu";
+// Nur Projekte ab diesem Leistungsdatum importieren (ältere = Altbestand).
+const SINCE = Deno.env.get("ZOHO_SINCE") ?? "2025-10-01";
 
 interface ProjectRow {
   external_id: string;
@@ -88,6 +92,10 @@ async function buildRows(token: string): Promise<ProjectRow[]> {
   for (const q of records) {
     const dealId = lookupId(q.Deal_Name);
     if (!dealId) continue;
+    // Datumsfilter clientseitig (COQL kann keinen Range auf verknüpften Feldern):
+    // nur Projekte ab SINCE; ohne Leistungsdatum = Altbestand → überspringen.
+    const ed = q["Deal_Name.Leitungserbringung"] as string | null;
+    if (!ed || ed < SINCE) continue;
     byExternal.set(dealId, {
       external_id: dealId,
       name: lookupName(q.Deal_Name) ?? (q.Angebotsnummer as string) ?? "Unbenannt",

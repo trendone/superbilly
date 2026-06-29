@@ -9,15 +9,23 @@ Hintergrund & Feld-Mapping: `ressourcenplanung/zoho-anbindung.md`.
 2. **Eine COQL-Abfrage** zieht serverseitig gefiltert die beauftragten Consulting-Angebote
    samt Deal-Feldern (`Quote_Stage ∈ {Beauftragt, Teilweise beauftragt}` und
    `Deal_Name.Leistungsbereich = Consulting`).
-3. Upsert in `projects`, idempotent über `external_id` (Deal-ID).
+3. Clientseitiger Datumsfilter: nur Projekte mit `Leistungsdatum ≥ ZOHO_SINCE`
+   (Default `2025-10-01`); ohne Datum = Altbestand → übersprungen. (COQL erlaubt
+   keinen Range-Vergleich auf verknüpften Feldern, daher in der Function.)
+4. Upsert in `projects`, idempotent über `external_id` (Deal-ID).
 
 COQL statt Such-API, weil die Suche bei 2000 Treffern gedeckelt ist und nicht
 modulübergreifend nach `Leistungsbereich` filtern kann. Braucht Scope `ZohoCRM.coql.READ`.
+
+> Aufräumen von Altbestand: alte Zoho-Projekte (`end_date < ZOHO_SINCE`) werden
+> **nur gelöscht, wenn sie keine Mite-Ist-Zeiten** (`project_actuals`) haben –
+> aktiv getrackte Projekte bleiben immer erhalten.
 
 ## Benötigte Secrets (Edge Function Secrets)
 Bereits gesetzt (Zoho): `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN`,
 `ZOHO_ACCOUNTS_DOMAIN`, `ZOHO_API_DOMAIN`.
 **Neu zu setzen:** `SYNC_SECRET` (frei gewählter Zufallswert – schützt den HTTP-Endpunkt).
+**Optional:** `ZOHO_SINCE` (Default `2025-10-01`) – frühestes Leistungsdatum.
 
 `SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY` werden von Supabase automatisch injiziert.
 
