@@ -114,6 +114,8 @@ export interface ProjectStat {
   hasMite: boolean // gibt es überhaupt Mite-Ist für dieses Projekt?
   deltaSollIstDays: number | null // Soll (verplant) − Ist (Mite); null ohne Mite-Daten
   budgetConsumedPct: number | null // Ist-€ (Mite) / Budget-€; null ohne Mite oder Budget
+  dayRateEur: number | null // verwendeter Tagessatz aus Mite (Ø über abrechenbare Zeit)
+  budgetDaysMite: number | null // Budget € / Tagessatz = verkaufte Tage
   budgetDays: number | null
   diffDays: number | null
   budgetPct: number | null // gebucht / Budget
@@ -158,11 +160,16 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
   }
 
   // Ist aus Mite (project_actuals): Minuten + Umsatz je Projekt.
-  const miteByProject = new Map<string, { minutes: number; revenue: number }>()
+  // billableMinutes = nur Zeilen mit revenue > 0 (für den Tagessatz; 0€-Services
+  // wie Reise/intern würden den Satz sonst verwässern).
+  const miteByProject = new Map<string, { minutes: number; revenue: number; billableMinutes: number }>()
   for (const pa of data.projectActuals) {
-    const cur = miteByProject.get(pa.project_id) ?? { minutes: 0, revenue: 0 }
-    cur.minutes += Number(pa.minutes ?? 0)
-    cur.revenue += Number(pa.revenue_eur ?? 0)
+    const cur = miteByProject.get(pa.project_id) ?? { minutes: 0, revenue: 0, billableMinutes: 0 }
+    const min = Number(pa.minutes ?? 0)
+    const rev = Number(pa.revenue_eur ?? 0)
+    cur.minutes += min
+    cur.revenue += rev
+    if (rev > 0) cur.billableMinutes += min
     miteByProject.set(pa.project_id, cur)
   }
 
@@ -225,6 +232,14 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       hasMite && budgetEur != null && budgetEur > 0
         ? Math.round((mite!.revenue / budgetEur) * 100)
         : null
+    // Verwendeter Tagessatz = Ø abrechenbarer Stundensatz × 8; Budget in Tagen.
+    const billableHours = (mite?.billableMinutes ?? 0) / 60
+    const dayRateEur =
+      hasMite && billableHours > 0 ? Math.round((mite!.revenue / billableHours) * 8) : null
+    const budgetDaysMite =
+      dayRateEur != null && dayRateEur > 0 && budgetEur != null
+        ? round1(budgetEur / dayRateEur)
+        : null
 
     return {
       project,
@@ -237,6 +252,8 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
       hasMite,
       deltaSollIstDays: deltaSollIstDays != null ? round1(deltaSollIstDays) : null,
       budgetConsumedPct,
+      dayRateEur,
+      budgetDaysMite,
       budgetDays,
       diffDays: diffDays != null ? round1(diffDays) : null,
       budgetPct,

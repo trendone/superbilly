@@ -130,7 +130,7 @@ export default function Analytics() {
 
   function exportProjects() {
     const rows: (string | number)[][] = [
-      ['Projekt', 'Kunde', 'Status', 'Gebucht (T)', 'Budget (T)', 'Differenz (T)', 'Ist Mite (T)', 'Ist Mite (€)', 'Δ Soll/Ist (T)', 'Budget (€)', 'Verbrauch %', 'Fakturiert (€)', 'Offen (€)', 'Prognose'],
+      ['Projekt', 'Kunde', 'Status', 'Gebucht (T)', 'Budget Plan (T)', 'Differenz (T)', 'Ist Mite (T)', 'Ist Mite (€)', 'Δ Soll/Ist (T)', 'Budget (€)', 'Tagessatz (€)', 'Budget Mite (T)', 'Verbrauch %', 'Fakturiert (€)', 'Offen (€)', 'Prognose'],
     ]
     for (const p of projects)
       rows.push([
@@ -144,6 +144,8 @@ export default function Analytics() {
         p.istMiteEur ?? '',
         p.deltaSollIstDays ?? '',
         p.budgetEur ?? '',
+        p.dayRateEur ?? '',
+        p.budgetDaysMite ?? '',
         p.budgetConsumedPct ?? '',
         p.invoicedEur,
         p.openEur,
@@ -236,11 +238,12 @@ function ProjectsView({
       bookedMite: a.bookedMite + (p.hasMite ? p.bookedDays : 0), // Soll nur der Mite-Projekte
       istMiteEur: a.istMiteEur + (p.istMiteEur ?? 0),
       budgetEurMite: a.budgetEurMite + (p.budgetConsumedPct != null ? (p.budgetEur ?? 0) : 0),
+      budgetDaysMite: a.budgetDaysMite + (p.budgetDaysMite ?? 0),
       budgetEur: a.budgetEur + (p.budgetEur ?? 0),
       invoiced: a.invoiced + p.invoicedEur,
       open: a.open + p.openEur,
     }),
-    { booked: 0, budget: 0, istMite: 0, bookedMite: 0, istMiteEur: 0, budgetEurMite: 0, budgetEur: 0, invoiced: 0, open: 0 },
+    { booked: 0, budget: 0, istMite: 0, bookedMite: 0, istMiteEur: 0, budgetEurMite: 0, budgetDaysMite: 0, budgetEur: 0, invoiced: 0, open: 0 },
   )
   const totDiff = tot.budget - tot.booked
   const totDeltaSollIst = tot.bookedMite - tot.istMite
@@ -284,6 +287,7 @@ function ProjectsView({
               <th className="num">Ist (Mite)</th>
               <th className="num">Δ Soll/Ist</th>
               <th className="num">Budget €</th>
+              <th className="num">Budget (T)</th>
               <th className="num">Verbrauch %</th>
               <th className="num">Offen €</th>
               <th>Prognose</th>
@@ -325,6 +329,9 @@ function ProjectsView({
                     {p.deltaSollIstDays == null ? '–' : `${p.deltaSollIstDays >= 0 ? '+' : ''}${p.deltaSollIstDays} T`}
                   </td>
                   <td className="num dim">{p.budgetEur != null ? eur.format(p.budgetEur) : '–'}</td>
+                  <td className="num dim" title={p.dayRateEur != null ? `Tagessatz ${eur.format(p.dayRateEur)} (aus Mite)` : 'kein Mite-Tagessatz'}>
+                    {p.budgetDaysMite != null ? `${p.budgetDaysMite} T` : '–'}
+                  </td>
                   <td className={`num ${p.budgetConsumedPct == null ? 'dim' : p.budgetConsumedPct > 100 ? 'red' : p.budgetConsumedPct >= 90 ? 'amber' : 'green'}`}>
                     {p.budgetConsumedPct == null ? '–' : `${p.budgetConsumedPct}%`}
                   </td>
@@ -349,6 +356,7 @@ function ProjectsView({
                 {tot.istMite === 0 ? '–' : `${totDeltaSollIst >= 0 ? '+' : ''}${Math.round(totDeltaSollIst * 10) / 10} T`}
               </td>
               <td className="num dim">{eur.format(tot.budgetEur)}</td>
+              <td className="num dim">{tot.budgetDaysMite > 0 ? `${Math.round(tot.budgetDaysMite * 10) / 10} T` : '–'}</td>
               <td className={`num ${totConsumedPct == null ? 'dim' : totConsumedPct > 100 ? 'red' : totConsumedPct >= 90 ? 'amber' : 'green'}`}>
                 {totConsumedPct == null ? '–' : `${totConsumedPct}%`}
               </td>
@@ -363,6 +371,7 @@ function ProjectsView({
         Ist (Mite) = getrackte Zeit aus Mite (à 8 h/Tag), zugeordnet über die Angebotsnummer.
         Δ Soll/Ist = verplante Tage − Ist; <span className="red">rot</span> = mehr getrackt als geplant. „–" = keine Mite-Zeiten.
         Verbrauch % = Ist-€ (Mite) / Budget-€; <span className="red">rot</span> &gt; 100 %.
+        Budget (T) = Budget-€ / Tagessatz (verwendeter Mite-Satz, im Tooltip).
       </p>
     </section>
   )
