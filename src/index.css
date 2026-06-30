@@ -816,6 +816,9 @@ code {
   overflow: auto;
   max-height: calc(100vh - 250px);
 }
+/* Wichtig: overflow:hidden der Tabelle aufheben – sonst ist die <table> selbst
+   der Scroll-Container und das sticky thead bezieht sich auf sie (greift nicht). */
+.table-scroll.scroll-y .ana-table { overflow: visible; }
 
 /* ───────────── Mobile (≤ 760px) ───────────── */
 @media (max-width: 760px) {
