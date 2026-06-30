@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { Database } from './database.types'
+import { workingDaysBetween } from './dates'
 
 export type Employee = Database['public']['Tables']['employees']['Row']
 export type Project = Database['public']['Tables']['projects']['Row']
@@ -30,4 +31,59 @@ export async function fetchWeek(mondayISO: string, fridayISO: string): Promise<W
   if (book.error) throw book.error
 
   return { employees: emp.data, projects: proj.data, bookings: book.data }
+}
+
+/** Felder einer manuellen Planungs-Buchung (Anlegen/Bearbeiten). */
+export interface BookingInput {
+  employee_id: string
+  project_id: string
+  start_date: string
+  end_date: string
+  budget: number
+  note: string | null
+}
+
+export async function createBooking(input: BookingInput): Promise<Booking> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { data, error } = await supabase
+    .from('bookings')
+    .insert({ ...input, source: 'manuell' })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateBooking(id: string, input: BookingInput): Promise<Booking> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { data, error } = await supabase
+    .from('bookings')
+    .update(input)
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteBooking(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { error } = await supabase.from('bookings').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** Summe verplanter Arbeitstage eines Projekts (alle Buchungen, optional eine ausgenommen). */
+export async function projectBookedDays(projectId: string, excludeId?: string): Promise<number> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id,start_date,end_date,budget')
+    .eq('project_id', projectId)
+  if (error) throw error
+  let total = 0
+  for (const b of data) {
+    if (b.id === excludeId) continue
+    total += workingDaysBetween(b.start_date, b.end_date) * Number(b.budget)
+  }
+  return Math.round(total * 10) / 10
 }

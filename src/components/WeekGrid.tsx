@@ -1,8 +1,23 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { fetchWeek, type Booking, type Project, type WeekData } from '../lib/data'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  createBooking,
+  deleteBooking,
+  fetchWeek,
+  updateBooking,
+  type Booking,
+  type BookingInput,
+  type Project,
+  type WeekData,
+} from '../lib/data'
 import { addDays, dayLabels, formatDay, isoWeek, mondayOf, toISODate } from '../lib/dates'
 import { holidayName } from '../lib/holidays'
 import { ABSENCE_CATEGORIES } from '../lib/analytics'
+import BookingModal from './BookingModal'
+
+type Selection = { empId: string; startISO: string; endISO: string }
+type ModalState =
+  | { mode: 'add'; empId: string; empName: string; start: string; end: string }
+  | { mode: 'edit'; empName: string; booking: Booking }
 
 export default function WeekGrid() {
   const [monday, setMonday] = useState(() => mondayOf(new Date()))
@@ -10,6 +25,11 @@ export default function WeekGrid() {
   const [data, setData] = useState<WeekData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [sel, setSel] = useState<Selection | null>(null)
+  const [modal, setModal] = useState<ModalState | null>(null)
+
+  // Drag-Status außerhalb des Render-Zyklus (vermeidet veraltete Closures).
+  const drag = useRef<{ empId: string; anchor: string; moved: boolean } | null>(null)
 
   // Arbeitstage (Mo–Fr) über die sichtbaren 1 oder 2 Wochen.
   const days = useMemo(() => {
@@ -18,6 +38,15 @@ export default function WeekGrid() {
       for (let i = 0; i < 5; i++) out.push(addDays(monday, w * 7 + i))
     return out
   }, [monday, weeks])
+
+  const load = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    return fetchWeek(toISODate(days[0]), toISODate(days[days.length - 1]))
+      .then(setData)
+      .catch((e) => setError(e.message ?? String(e)))
+      .finally(() => setLoading(false))
+  }, [days])
 
   useEffect(() => {
     let cancelled = false
@@ -73,6 +102,61 @@ export default function WeekGrid() {
   }
 
   const isToday = (d: Date) => toISODate(d) === toISODate(new Date())
+  const inSel = (empId: string, iso: string) =>
+    sel != null &&
+    sel.empId === empId &&
+    iso >= (sel.startISO < sel.endISO ? sel.startISO : sel.endISO) &&
+    iso <= (sel.startISO > sel.endISO ? sel.startISO : sel.endISO)
+
+  // ── Drag-Auswahl / Tap-to-Add ──────────────────────────────
+  function cellDown(e: React.PointerEvent, empId: string, iso: string) {
+    if ((e.target as HTMLElement).closest('.bk')) return // Karte → eigener Klick
+    e.preventDefault()
+    drag.current = { empId, anchor: iso, moved: false }
+    setSel({ empId, startISO: iso, endISO: iso })
+  }
+  function cellEnter(empId: string, iso: string) {
+    const d = drag.current
+    if (!d || d.empId !== empId) return
+    if (iso !== d.anchor) d.moved = true
+    setSel({ empId, startISO: d.anchor, endISO: iso })
+  }
+
+  useEffect(() => {
+    function up() {
+      const d = drag.current
+      if (!d) return
+      const s = sel
+      drag.current = null
+      if (s) {
+        const start = s.startISO < s.endISO ? s.startISO : s.endISO
+        const end = s.startISO > s.endISO ? s.startISO : s.endISO
+        const emp = data?.employees.find((x) => x.id === d.empId)
+        setModal({ mode: 'add', empId: d.empId, empName: emp?.name ?? '', start, end })
+      }
+      setSel(null)
+    }
+    window.addEventListener('pointerup', up)
+    return () => window.removeEventListener('pointerup', up)
+  }, [sel, data])
+
+  function openEdit(b: Booking, empName: string) {
+    if (b.locked) return
+    setModal({ mode: 'edit', empName, booking: b })
+  }
+
+  async function handleSave(input: BookingInput) {
+    if (modal?.mode === 'edit') await updateBooking(modal.booking.id, input)
+    else if (modal?.mode === 'add') await createBooking({ ...input, employee_id: modal.empId })
+    setModal(null)
+    await load()
+  }
+  async function handleDelete() {
+    if (modal?.mode !== 'edit') return
+    await deleteBooking(modal.booking.id)
+    setModal(null)
+    await load()
+  }
 
   const lastMonday = addDays(monday, (weeks - 1) * 7)
   const weekLabel =
@@ -148,12 +232,16 @@ export default function WeekGrid() {
                   </div>
                 </div>
 
-                {days.map((day, i) => (
+                {days.map((day, i) => {
+                  const iso = toISODate(day)
+                  return (
                   <div
                     key={i}
-                    className={`gc cell${isToday(day) ? ' is-today' : ''}${
-                      holidayName(toISODate(day)) ? ' is-holiday' : ''
-                    }${weeks === 2 && i === 5 ? ' week-sep' : ''}`}
+                    className={`gc cell editable${isToday(day) ? ' is-today' : ''}${
+                      holidayName(iso) ? ' is-holiday' : ''
+                    }${weeks === 2 && i === 5 ? ' week-sep' : ''}${inSel(emp.id, iso) ? ' cell-sel' : ''}`}
+                    onPointerDown={(e) => cellDown(e, emp.id, iso)}
+                    onPointerEnter={() => cellEnter(emp.id, iso)}
                   >
                     {bookingsFor(emp.id, day).map((b) => {
                       const p = projById.get(b.project_id)
@@ -163,7 +251,11 @@ export default function WeekGrid() {
                           key={b.id}
                           className="bk"
                           style={{ borderLeftColor: color, background: `${color}22` }}
-                          title={p?.name}
+                          title={b.locked ? `${p?.name ?? ''} (gesperrt)` : p?.name}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openEdit(b, emp.name)
+                          }}
                         >
                           <div className="bk-name">{p?.name ?? '—'}</div>
                           <div className="bk-sub">
@@ -172,8 +264,10 @@ export default function WeekGrid() {
                         </div>
                       )
                     })}
+                    <div className="cell-add-hint">+</div>
                   </div>
-                ))}
+                  )
+                })}
               </Fragment>
             )
           })}
@@ -181,8 +275,22 @@ export default function WeekGrid() {
         </div>
       )}
 
+      {modal && data && (
+        <BookingModal
+          employeeName={modal.empName}
+          projects={data.projects}
+          initial={modal.mode === 'edit' ? modal.booking : undefined}
+          defaultStart={modal.mode === 'add' ? modal.start : undefined}
+          defaultEnd={modal.mode === 'add' ? modal.end : undefined}
+          onSave={handleSave}
+          onDelete={modal.mode === 'edit' ? handleDelete : undefined}
+          onCancel={() => setModal(null)}
+        />
+      )}
+
       <p className="hint">
-        Dev-Seed · nur Lesen (Bearbeiten kommt mit Login) · {data?.employees.length ?? 0} Mitarbeiter
+        Zelle ziehen oder antippen zum Planen · Buchung anklicken zum Bearbeiten ·{' '}
+        {data?.employees.length ?? 0} Mitarbeiter
       </p>
     </div>
   )
