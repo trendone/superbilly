@@ -1,4 +1,4 @@
-«# Konzept & Roadmap – Ressourcenplanung „Billy"
+# Konzept & Roadmap – Ressourcenplanung „Billy"
 
 > Stand: 2026-06-25 · Autor: erarbeitet mit Claude Code
 > Zielbild: Aus dem heutigen wochenbasierten Ressourcen-Tool ein leichtes
@@ -27,7 +27,7 @@ liegt in **einem** Dokument `app/state`:
 - Automatische Auslastungs- und Budget-Auswertung (`auswertung.html`)
 
 **Warum wir die Plattform wechseln (bewusste Entscheidung):**
-1. **Roadmap ist relational** – Profitabilität, Controlling, Soll/Ist u«nd
+1. **Roadmap ist relational** – Profitabilität, Controlling, Soll/Ist und
    Forecast brauchen Joins/Aggregationen über Projekte × Pakete × Buchungen ×
    Deals × Tagessätze. Eine Dokument-DB (Firestore) ist darin schwach.
 2. **Ein-Dokument-Modell** skaliert nicht (1-MB-Limit, Überschreib-Risiko).
