@@ -122,25 +122,29 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
     )
   }
 
-  // Produktiv gebuchte Tage (ohne System-Kategorien) + Abwesenheitstage.
-  // Verfügbarkeit = FTE-Anteil × (Arbeitstage − Feiertage) − Abwesenheit.
+  // Produktiv = Nicht-System-Zeit. Abwesenheit (Urlaub/Krank/Frei/Kurzarbeit)
+  // UND interne Zeit (Admin/TS) reduzieren die buchbare Kapazität.
+  // Verfügbarkeit = FTE-Anteil × (Arbeitstage − Feiertage) − Abwesenheit − Admin.
   function capacityFor(empId: string, weeklyHours: number) {
     let productive = 0
     let absence = 0
+    let admin = 0
     for (const day of days) {
       for (const b of bookingsFor(empId, day)) {
         const p = projById.get(b.project_id)
         if (isAbsence(p)) absence += Number(b.budget)
-        else if (!p?.is_system) productive += Number(b.budget)
+        else if (p?.is_system) admin += Number(b.budget)
+        else productive += Number(b.budget)
       }
     }
     const workdays = days.filter((d) => !holidayName(toISODate(d))).length
     const gross = (weeklyHours / 40) * workdays
-    const avail = Math.max(0, gross - absence)
+    const avail = Math.max(0, gross - absence - admin)
     const pct = avail ? Math.round((productive / avail) * 100) : 0
     return {
       productive: Math.round(productive * 10) / 10,
       absence: Math.round(absence * 10) / 10,
+      admin: Math.round(admin * 10) / 10,
       avail: Math.round(avail * 10) / 10,
       pct,
     }
@@ -293,6 +297,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
                   <div className="emp-cap">
                     {cap.productive} / {cap.avail} Tage · {cap.pct}%
                     {cap.absence > 0 && <span className="emp-abs"> · {cap.absence} T abw.</span>}
+                    {cap.admin > 0 && <span className="emp-abs"> · {cap.admin} T Admin</span>}
                   </div>
                   <div className="cap-bar">
                     <span

@@ -682,7 +682,7 @@ function EmployeesView({
                             <button
                               className={`heat-btn${isSel ? ' sel' : ''}`}
                               style={{ background: c.bg, color: c.fg }}
-                              title={`${s.bookedDays} / ${s.netAvailDays} T${s.absenceDays ? ` · ${s.absenceDays} T abw.` : ''}`}
+                              title={`${s.bookedDays} / ${s.netAvailDays} T${s.absenceDays ? ` · ${s.absenceDays} T abw.` : ''}${s.adminDays ? ` · ${s.adminDays} T Admin` : ''}`}
                               onClick={() => setSelected(isSel ? null : { emp, win: { year: s.year, month: s.month, label: s.label } })}
                             >
                               {s.netAvailDays > 0 ? `${s.pct}%` : '–'}

@@ -522,7 +522,9 @@ function statForMonth(emp: Employee, data: AnalyticsData, m: MonthWindow): Month
     cur.setDate(cur.getDate() + 1)
   }
 
-  const netAvailDays = Math.max(0, availDaysFTE - absenceDays)
+  // Abwesenheit UND interne Zeit (Admin/TS) reduzieren die buchbare Kapazität;
+  // produktiv ist nur Nicht-System-Zeit.
+  const netAvailDays = Math.max(0, availDaysFTE - absenceDays - adminDays)
   const pct = netAvailDays > 0 ? Math.round((bookedDays / netAvailDays) * 100) : 0
 
   return {
