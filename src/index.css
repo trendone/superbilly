@@ -381,6 +381,7 @@ code {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
+  min-width: 0;
 }
 .ms-form input,
 .ms-form select {
@@ -390,6 +391,8 @@ code {
   font-size: 14px;
   color: var(--text);
   background: var(--card);
+  width: 100%;
+  min-width: 0;
 }
 .ms-form input:focus,
 .ms-form select:focus { outline: none; border-color: var(--accent); }
