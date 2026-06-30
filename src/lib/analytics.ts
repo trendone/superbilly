@@ -18,6 +18,7 @@ export type HoursPeriod = Database['public']['Tables']['employee_hours_periods']
 export type Milestone = Database['public']['Tables']['milestones']['Row']
 export type Actual = Database['public']['Tables']['actuals']['Row']
 export type ProjectActual = Database['public']['Tables']['project_actuals']['Row']
+export type Department = Database['public']['Tables']['departments']['Row']
 
 // System-Kategorien, die echte Abwesenheit darstellen (mindern die Verfügbarkeit).
 export const ABSENCE_CATEGORIES = ['Urlaub', 'Krank', 'Frei', 'Kurzarbeit'] as const
@@ -33,13 +34,14 @@ export interface AnalyticsData {
   milestones: Milestone[]
   actuals: Actual[]
   projectActuals: ProjectActual[] // Ist-Zeiten aus Mite (project_actuals)
+  departments: Department[]
 }
 
 /** Lädt alle Daten, die beide Auswertungen brauchen, in einem Rutsch. */
 export async function fetchAnalytics(): Promise<AnalyticsData> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
 
-  const [emp, proj, book, periods, ms, act, pact] = await Promise.all([
+  const [emp, proj, book, periods, ms, act, pact, dep] = await Promise.all([
     supabase.from('employees').select('*').eq('active', true).order('name'),
     supabase.from('projects').select('*').order('name'),
     supabase.from('bookings').select('*'),
@@ -47,6 +49,7 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
     supabase.from('milestones').select('*'),
     supabase.from('actuals').select('*'),
     supabase.from('project_actuals').select('*'),
+    supabase.from('departments').select('*').order('sort_order').order('name'),
   ])
 
   if (emp.error) throw emp.error
@@ -56,6 +59,7 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
   if (ms.error) throw ms.error
   if (act.error) throw act.error
   if (pact.error) throw pact.error
+  if (dep.error) throw dep.error
 
   return {
     employees: emp.data,
@@ -65,6 +69,7 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
     milestones: ms.data,
     actuals: act.data,
     projectActuals: pact.data,
+    departments: dep.data,
   }
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   employeeMonthStats,
   fetchAnalytics,
@@ -159,6 +159,8 @@ export default function Analytics() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_actuals' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, () => load())
       .subscribe()
 
     return () => {
@@ -221,11 +223,13 @@ export default function Analytics() {
 
   function exportEmployees() {
     if (!data) return
-    const rows: (string | number)[][] = [['Mitarbeiter', ...months.map((m) => m.label), 'Σ %']]
+    const deptName = new Map(data.departments.map((d) => [d.id, d.name]))
+    const rows: (string | number)[][] = [['Mitarbeiter', 'Abteilung', ...months.map((m) => m.label), 'Σ %']]
     for (const emp of data.employees) {
       const stats = employeeMonthStats(emp, data, months)
       const sum = summarize(stats)
-      rows.push([emp.name, ...stats.map((s) => `${s.pct}%`), `${sum.pct}%`])
+      const dept = emp.department_id ? deptName.get(emp.department_id) ?? '' : ''
+      rows.push([emp.name, dept, ...stats.map((s) => `${s.pct}%`), `${sum.pct}%`])
     }
     downloadCSV('auswertung-mitarbeiter.csv', rows)
   }
@@ -473,6 +477,8 @@ function EmployeesView({
   selected: Selected | null
   setSelected: (s: Selected | null) => void
 }) {
+  const [deptFilter, setDeptFilter] = useState<string>('alle') // 'alle' | dept.id | 'none'
+
   const rows = useMemo(
     () =>
       data.employees.map((emp) => ({
@@ -482,6 +488,55 @@ function EmployeesView({
       })),
     [data, months],
   )
+
+  type Row = (typeof rows)[number]
+
+  // Spaltenweise Aggregation (je Monat + Σ) über eine Gruppe von Mitarbeitern.
+  function subtotal(groupRows: Row[]) {
+    const perMonth = months.map((_, i) => {
+      let booked = 0
+      let avail = 0
+      for (const r of groupRows) {
+        booked += r.stats[i].bookedDays
+        avail += r.stats[i].netAvailDays
+      }
+      return { booked, avail, pct: avail > 0 ? Math.round((booked / avail) * 100) : 0 }
+    })
+    let booked = 0
+    let avail = 0
+    for (const r of groupRows) {
+      booked += r.sum.bookedDays
+      avail += r.sum.netAvailDays
+    }
+    return { perMonth, pct: avail > 0 ? Math.round((booked / avail) * 100) : 0 }
+  }
+
+  // Mitarbeiter nach Abteilung gruppieren (gefiltert). „Ohne Abteilung" zuletzt;
+  // leere Abteilungen ausgeblendet. Ohne angelegte Abteilungen: eine Gruppe ohne Kopf.
+  const groups = useMemo(() => {
+    const filtered = rows.filter((r) =>
+      deptFilter === 'alle' ? true : deptFilter === 'none' ? !r.emp.department_id : r.emp.department_id === deptFilter,
+    )
+    if (data.departments.length === 0) {
+      return [{ id: null as string | null, name: '', color: null as string | null, rows: filtered }]
+    }
+    const byDept = new Map<string, Row[]>()
+    const none: Row[] = []
+    for (const r of filtered) {
+      if (r.emp.department_id) {
+        const arr = byDept.get(r.emp.department_id) ?? []
+        arr.push(r)
+        byDept.set(r.emp.department_id, arr)
+      } else none.push(r)
+    }
+    const out: { id: string | null; name: string; color: string | null; rows: Row[] }[] = []
+    for (const d of data.departments) {
+      const rs = byDept.get(d.id)
+      if (rs && rs.length) out.push({ id: d.id, name: d.name, color: d.color, rows: rs })
+    }
+    if (none.length) out.push({ id: null, name: 'Ohne Abteilung', color: null, rows: none })
+    return out
+  }, [rows, data.departments, deptFilter, months])
 
   const detail = useMemo(
     () => (selected ? monthDetail(selected.emp, data, selected.win.year, selected.win.month) : []),
@@ -516,6 +571,18 @@ function EmployeesView({
           <button className={period === '6m' ? 'active' : ''} onClick={() => setPeriod('6m')}>6 Monate</button>
           <button className={period === 'year' ? 'active' : ''} onClick={() => setPeriod('year')}>Jahr</button>
         </span>
+        {data.departments.length > 0 && (
+          <label>
+            Abteilung{' '}
+            <select className="field-inline" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+              <option value="alle">Alle</option>
+              {data.departments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+              <option value="none">Ohne Abteilung</option>
+            </select>
+          </label>
+        )}
         {period === 'year' && (
           <span className="year-nav">
             <button onClick={() => setYear(year - 1)}>←</button>
@@ -543,33 +610,59 @@ function EmployeesView({
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ emp, stats, sum }) => (
-              <tr key={emp.id}>
-                <td className="heat-name">
-                  {emp.name}
-                  <div className="dim">{emp.weekly_hours} h</div>
-                </td>
-                {stats.map((s) => {
-                  const c = heatColor(s.pct, s.netAvailDays > 0)
-                  const isSel = !!selected && selected.emp.id === emp.id && selected.win.year === s.year && selected.win.month === s.month
-                  return (
-                    <td key={`${s.year}-${s.month}`} className="heat-cell">
-                      <button
-                        className={`heat-btn${isSel ? ' sel' : ''}`}
-                        style={{ background: c.bg, color: c.fg }}
-                        title={`${s.bookedDays} / ${s.netAvailDays} T${s.absenceDays ? ` · ${s.absenceDays} T abw.` : ''}`}
-                        onClick={() => setSelected(isSel ? null : { emp, win: { year: s.year, month: s.month, label: s.label } })}
-                      >
-                        {s.netAvailDays > 0 ? `${s.pct}%` : '–'}
-                      </button>
-                    </td>
-                  )
-                })}
-                <td className="num heat-sum">
-                  <span className={sum.pct > 100 ? 'red' : sum.pct < 70 ? 'dim' : 'green'}>{sum.pct}%</span>
-                </td>
-              </tr>
-            ))}
+            {groups.map((g) => {
+              const showSub = !!g.name && g.rows.length > 1
+              const sub = showSub ? subtotal(g.rows) : null
+              return (
+                <Fragment key={g.id ?? '__none__'}>
+                  {g.name && (
+                    <tr className="heat-group">
+                      <th className="heat-name" colSpan={months.length + 2}>
+                        {g.color && <span className="grid-group-dot" style={{ background: g.color }} />}
+                        {g.name}
+                        <span className="grid-group-count">{g.rows.length}</span>
+                      </th>
+                    </tr>
+                  )}
+                  {g.rows.map(({ emp, stats, sum }) => (
+                    <tr key={emp.id}>
+                      <td className="heat-name">
+                        {emp.name}
+                        <div className="dim">{emp.weekly_hours} h</div>
+                      </td>
+                      {stats.map((s) => {
+                        const c = heatColor(s.pct, s.netAvailDays > 0)
+                        const isSel = !!selected && selected.emp.id === emp.id && selected.win.year === s.year && selected.win.month === s.month
+                        return (
+                          <td key={`${s.year}-${s.month}`} className="heat-cell">
+                            <button
+                              className={`heat-btn${isSel ? ' sel' : ''}`}
+                              style={{ background: c.bg, color: c.fg }}
+                              title={`${s.bookedDays} / ${s.netAvailDays} T${s.absenceDays ? ` · ${s.absenceDays} T abw.` : ''}`}
+                              onClick={() => setSelected(isSel ? null : { emp, win: { year: s.year, month: s.month, label: s.label } })}
+                            >
+                              {s.netAvailDays > 0 ? `${s.pct}%` : '–'}
+                            </button>
+                          </td>
+                        )
+                      })}
+                      <td className="num heat-sum">
+                        <span className={sum.pct > 100 ? 'red' : sum.pct < 70 ? 'dim' : 'green'}>{sum.pct}%</span>
+                      </td>
+                    </tr>
+                  ))}
+                  {sub && (
+                    <tr className="heat-subtotal">
+                      <td className="heat-name">Σ {g.name}</td>
+                      {sub.perMonth.map((m, i) => (
+                        <td key={i} className="num">{m.avail > 0 ? `${m.pct}%` : '–'}</td>
+                      ))}
+                      <td className="num heat-sum">{sub.pct}%</td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       </div>

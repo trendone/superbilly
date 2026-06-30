@@ -228,6 +228,32 @@ code {
 .gh.corner { color: var(--muted); }
 .gh.is-today { background: #eef2ff; }
 
+/* Abteilungs-Kopfzeile (volle Breite über alle Spalten). */
+.grid-group {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f1f5f9;
+  border-left: 3px solid #cbd5e1;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.grid-group-dot { width: 9px; height: 9px; border-radius: 50%; }
+.grid-group-count {
+  background: #e2e8f0;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .gc { background: var(--card); padding: 8px; min-height: 64px; }
 .gc.cell.is-today { background: #fafaff; }
 
@@ -719,6 +745,20 @@ code {
 .heat-btn:hover { filter: brightness(0.96); }
 .heat-btn.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
 .heat-sum { font-weight: 700; padding-left: 10px; }
+/* Abteilungs-Kopfzeile in der Heatmap. */
+.heat tbody .heat-group .heat-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  padding-top: 10px;
+}
+.heat tbody .heat-group .grid-group-dot { display: inline-block; margin-right: 6px; vertical-align: middle; }
+.heat tbody .heat-group .grid-group-count { margin-left: 7px; }
+/* Zwischensumme je Abteilung. */
+.heat-subtotal td { color: var(--muted); font-weight: 600; font-size: 11px; }
+.heat-subtotal .heat-name { font-weight: 700; }
 .heat-legend { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
 .heat-legend i {
   display: inline-block;

@@ -9,6 +9,7 @@ export type EmployeeInsert = Database['public']['Tables']['employees']['Insert']
 export type EmployeeUpdate = Database['public']['Tables']['employees']['Update']
 export type HoursPeriod = Database['public']['Tables']['employee_hours_periods']['Row']
 export type Project = Database['public']['Tables']['projects']['Row']
+export type Department = Database['public']['Tables']['departments']['Row']
 
 function sb() {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
@@ -19,19 +20,22 @@ export interface AdminData {
   employees: Employee[]
   periods: HoursPeriod[]
   systemProjects: Project[]
+  departments: Department[]
 }
 
 export async function fetchAdmin(): Promise<AdminData> {
   const s = sb()
-  const [emp, per, proj] = await Promise.all([
+  const [emp, per, proj, dep] = await Promise.all([
     s.from('employees').select('*').order('name'),
     s.from('employee_hours_periods').select('*').order('valid_from'),
     s.from('projects').select('*').eq('is_system', true).order('name'),
+    s.from('departments').select('*').order('sort_order').order('name'),
   ])
   if (emp.error) throw emp.error
   if (per.error) throw per.error
   if (proj.error) throw proj.error
-  return { employees: emp.data, periods: per.data, systemProjects: proj.data }
+  if (dep.error) throw dep.error
+  return { employees: emp.data, periods: per.data, systemProjects: proj.data, departments: dep.data }
 }
 
 // ── Mitarbeiter ──────────────────────────────────────────────────────────
@@ -79,4 +83,25 @@ export async function updateSystemCategory(id: string, patch: { name?: string; c
   const { data, error } = await sb().from('projects').update(patch).eq('id', id).select().single()
   if (error) throw error
   return data
+}
+
+// ── Abteilungen ─────────────────────────────────────────────────────────────
+export async function createDepartment(name: string, color: string): Promise<Department> {
+  const { data, error } = await sb()
+    .from('departments')
+    .insert({ name, color })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+export async function updateDepartment(id: string, patch: { name?: string; color?: string }): Promise<Department> {
+  const { data, error } = await sb().from('departments').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+export async function deleteDepartment(id: string): Promise<void> {
+  // Mitarbeiter bleiben bestehen (department_id → null via ON DELETE SET NULL).
+  const { error } = await sb().from('departments').delete().eq('id', id)
+  if (error) throw error
 }

@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   addPeriod,
+  createDepartment,
   createEmployee,
   createSystemCategory,
+  deleteDepartment,
   deleteEmployee,
   deletePeriod,
   fetchAdmin,
+  updateDepartment,
   updateEmployee,
   updateSystemCategory,
   type AdminData,
+  type Department,
   type Employee,
   type Project,
 } from '../lib/admin'
@@ -40,6 +44,7 @@ export default function Admin() {
       {data && (
         <>
           <EmployeesSection data={data} reload={load} setError={setError} />
+          <DepartmentsSection data={data} reload={load} setError={setError} />
           <CategoriesSection data={data} reload={load} />
         </>
       )}
@@ -85,6 +90,7 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
 
       {adding && (
         <EmployeeForm
+          departments={data.departments}
           onCancel={() => setAdding(false)}
           onSave={async (vals) => {
             await createEmployee(vals)
@@ -100,6 +106,7 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
             <tr>
               <th>Name</th>
               <th>E-Mail</th>
+              <th>Abteilung</th>
               <th className="num">Wochenstunden</th>
               <th>Status</th>
               <th>Aktionen</th>
@@ -112,6 +119,7 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
                 <EmpRow
                   key={e.id}
                   e={e}
+                  departments={data.departments}
                   periods={periods}
                   isEditing={editingId === e.id}
                   isPeriods={periodsId === e.id}
@@ -133,28 +141,30 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
 }
 
 function EmpRow({
-  e, periods, isEditing, isPeriods, onEdit, onTogglePeriods, onDelete, onSaveEdit, onAddPeriod, onDeletePeriod, setError,
+  e, departments, periods, isEditing, isPeriods, onEdit, onTogglePeriods, onDelete, onSaveEdit, onAddPeriod, onDeletePeriod, setError,
 }: {
   e: Employee
+  departments: Department[]
   periods: AdminData['periods']
   isEditing: boolean
   isPeriods: boolean
   onEdit: () => void
   onTogglePeriods: () => void
   onDelete: () => void
-  onSaveEdit: (patch: { name: string; email: string | null; weekly_hours: number; active: boolean }) => Promise<void>
+  onSaveEdit: (patch: { name: string; email: string | null; weekly_hours: number; active: boolean; department_id: string | null }) => Promise<void>
   onAddPeriod: (from: string, hours: number) => Promise<void>
   onDeletePeriod: (id: string) => Promise<void>
   setError: (s: string | null) => void
 }) {
   const [pFrom, setPFrom] = useState('')
   const [pHours, setPHours] = useState('')
+  const dept = departments.find((d) => d.id === e.department_id)
 
   if (isEditing) {
     return (
       <tr>
-        <td colSpan={5}>
-          <EmployeeForm initial={e} onCancel={onEdit} onSave={onSaveEdit} />
+        <td colSpan={6}>
+          <EmployeeForm initial={e} departments={departments} onCancel={onEdit} onSave={onSaveEdit} />
         </td>
       </tr>
     )
@@ -164,6 +174,15 @@ function EmpRow({
       <tr className={e.active ? '' : 'dim'}>
         <td>{e.name}</td>
         <td className="dim">{e.email ?? '—'}</td>
+        <td>
+          {dept ? (
+            <span className="badge" style={{ background: `${dept.color ?? '#94a3b8'}22`, color: dept.color ?? undefined }}>
+              {dept.name}
+            </span>
+          ) : (
+            <span className="dim">—</span>
+          )}
+        </td>
         <td className="num">
           {e.weekly_hours} h{periods.length > 0 && <span title={`${periods.length} abweichende Periode(n)`}> 🕒</span>}
         </td>
@@ -176,7 +195,7 @@ function EmpRow({
       </tr>
       {isPeriods && (
         <tr>
-          <td colSpan={5}>
+          <td colSpan={6}>
             <div className="admin-periods">
               <div className="dim">Abweichende Wochenstunden ab Datum (überschreiben die Basis ab dort):</div>
               {periods.length === 0 && <div className="dim">Keine abweichenden Zeiträume.</div>}
@@ -212,16 +231,18 @@ function EmpRow({
 }
 
 function EmployeeForm({
-  initial, onSave, onCancel,
+  initial, departments, onSave, onCancel,
 }: {
   initial?: Employee
-  onSave: (vals: { name: string; email: string | null; weekly_hours: number; active: boolean }) => Promise<void>
+  departments: Department[]
+  onSave: (vals: { name: string; email: string | null; weekly_hours: number; active: boolean; department_id: string | null }) => Promise<void>
   onCancel: () => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [email, setEmail] = useState(initial?.email ?? '')
   const [hours, setHours] = useState(initial?.weekly_hours != null ? String(initial.weekly_hours) : '40')
   const [active, setActive] = useState(initial?.active ?? true)
+  const [deptId, setDeptId] = useState(initial?.department_id ?? '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -230,7 +251,7 @@ function EmployeeForm({
     if (!name.trim()) { setErr('Name ist Pflicht.'); return }
     setSaving(true); setErr(null)
     try {
-      await onSave({ name: name.trim(), email: email.trim() || null, weekly_hours: Number(hours.replace(',', '.')) || 0, active })
+      await onSave({ name: name.trim(), email: email.trim() || null, weekly_hours: Number(hours.replace(',', '.')) || 0, active, department_id: deptId || null })
     } catch (e) {
       setErr((e as Error).message); setSaving(false)
     }
@@ -242,8 +263,130 @@ function EmployeeForm({
         <label>Name<input value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label>E-Mail<input type="email" value={email} placeholder="vorname.nachname@trendone.com" onChange={(e) => setEmail(e.target.value)} /></label>
         <label>Wochenstunden<input inputMode="decimal" value={hours} onChange={(e) => setHours(e.target.value)} /></label>
+        <label>Abteilung
+          <select value={deptId} onChange={(e) => setDeptId(e.target.value)}>
+            <option value="">— keine —</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </label>
         <label className="admin-check">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> aktiv
+        </label>
+      </div>
+      {err && <div className="status err">✕ {err}</div>}
+      <div className="ms-form-actions">
+        <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Speichert…' : 'Speichern'}</button>
+        <button type="button" className="btn-ghost" onClick={onCancel}>Abbrechen</button>
+      </div>
+    </form>
+  )
+}
+
+// ── Abteilungen ──────────────────────────────────────────────────────────────
+
+function DepartmentsSection({ data, reload, setError }: { data: AdminData; reload: () => Promise<void>; setError: (s: string | null) => void }) {
+  const [adding, setAdding] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+
+  const countByDept = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const e of data.employees) {
+      if (e.department_id) m.set(e.department_id, (m.get(e.department_id) ?? 0) + 1)
+    }
+    return m
+  }, [data.employees])
+
+  async function onDelete(d: Department) {
+    const n = countByDept.get(d.id) ?? 0
+    const extra = n > 0 ? ` ${n} Mitarbeiter verlieren die Zuordnung (werden „ohne Abteilung").` : ''
+    if (!confirm(`Abteilung „${d.name}" löschen?${extra}`)) return
+    try {
+      await deleteDepartment(d.id)
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  return (
+    <section className="ana-section">
+      <div className="ana-toolbar">
+        <h3 className="admin-sec">Abteilungen ({data.departments.length})</h3>
+        <button className="btn-primary" onClick={() => { setAdding((v) => !v); setEditId(null) }}>
+          {adding ? '× Abbrechen' : '+ Abteilung'}
+        </button>
+      </div>
+      <p className="hint">Eindeutiges Merkmal je Mitarbeiter. Dient der Gruppierung im Planungsraster und für Auswertungen.</p>
+
+      {adding && (
+        <DepartmentForm
+          onCancel={() => setAdding(false)}
+          onSave={async (name, color) => { await createDepartment(name, color); setAdding(false); await reload() }}
+        />
+      )}
+
+      <div className="admin-cat-list">
+        {data.departments.map((d) =>
+          editId === d.id ? (
+            <DepartmentForm
+              key={d.id}
+              initial={d}
+              onCancel={() => setEditId(null)}
+              onSave={async (name, color) => { await updateDepartment(d.id, { name, color }); setEditId(null); await reload() }}
+            />
+          ) : (
+            <div key={d.id} className="admin-cat-row">
+              <span className="dot" style={{ background: d.color ?? '#94a3b8' }} />
+              <span className="admin-cat-name">{d.name}</span>
+              <span className="dim">{countByDept.get(d.id) ?? 0} MA</span>
+              <button className="icon-btn" title="Bearbeiten" onClick={() => { setEditId(d.id); setAdding(false) }}>✎</button>
+              <button className="icon-btn" title="Löschen" onClick={() => onDelete(d)}>🗑</button>
+            </div>
+          ),
+        )}
+      </div>
+    </section>
+  )
+}
+
+function DepartmentForm({
+  initial, onSave, onCancel,
+}: {
+  initial?: Department
+  onSave: (name: string, color: string) => Promise<void>
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [color, setColor] = useState(initial?.color ?? COLORS[0])
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function submit(ev: React.FormEvent) {
+    ev.preventDefault()
+    if (!name.trim()) { setErr('Name ist Pflicht.'); return }
+    setSaving(true); setErr(null)
+    try { await onSave(name.trim(), color) } catch (e) { setErr((e as Error).message); setSaving(false) }
+  }
+
+  return (
+    <form className="ms-form" onSubmit={submit}>
+      <div className="ms-form-grid">
+        <label>Name<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label>
+          Farbe
+          <div className="admin-swatches">
+            {COLORS.map((c) => (
+              <button
+                type="button"
+                key={c}
+                className={`admin-swatch${c === color ? ' sel' : ''}`}
+                style={{ background: c }}
+                onClick={() => setColor(c)}
+              />
+            ))}
+          </div>
         </label>
       </div>
       {err && <div className="status err">✕ {err}</div>}

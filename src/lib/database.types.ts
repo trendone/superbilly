@@ -148,6 +148,30 @@ export type Database = {
           },
         ]
       }
+      departments: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       employee_hours_periods: {
         Row: {
           employee_id: string
@@ -181,6 +205,7 @@ export type Database = {
         Row: {
           active: boolean
           created_at: string
+          department_id: string | null
           email: string | null
           id: string
           name: string
@@ -189,6 +214,7 @@ export type Database = {
         Insert: {
           active?: boolean
           created_at?: string
+          department_id?: string | null
           email?: string | null
           id?: string
           name: string
@@ -197,12 +223,21 @@ export type Database = {
         Update: {
           active?: boolean
           created_at?: string
+          department_id?: string | null
           email?: string | null
           id?: string
           name?: string
           weekly_hours?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "employees_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       milestones: {
         Row: {

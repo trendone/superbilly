@@ -5,18 +5,20 @@ import { toISODate, workingDaysBetween } from './dates'
 export type Employee = Database['public']['Tables']['employees']['Row']
 export type Project = Database['public']['Tables']['projects']['Row']
 export type Booking = Database['public']['Tables']['bookings']['Row']
+export type Department = Database['public']['Tables']['departments']['Row']
 
 export interface WeekData {
   employees: Employee[]
   projects: Project[]
   bookings: Booking[]
+  departments: Department[]
 }
 
 /** Lädt Mitarbeiter, Projekte und alle Buchungen, die die Woche [mo..fr] berühren. */
 export async function fetchWeek(mondayISO: string, fridayISO: string): Promise<WeekData> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
 
-  const [emp, proj, book] = await Promise.all([
+  const [emp, proj, book, dep] = await Promise.all([
     supabase.from('employees').select('*').eq('active', true).order('name'),
     supabase.from('projects').select('*'),
     supabase
@@ -24,13 +26,15 @@ export async function fetchWeek(mondayISO: string, fridayISO: string): Promise<W
       .select('*')
       .lte('start_date', fridayISO)
       .gte('end_date', mondayISO),
+    supabase.from('departments').select('*').order('sort_order').order('name'),
   ])
 
   if (emp.error) throw emp.error
   if (proj.error) throw proj.error
   if (book.error) throw book.error
+  if (dep.error) throw dep.error
 
-  return { employees: emp.data, projects: proj.data, bookings: book.data }
+  return { employees: emp.data, projects: proj.data, bookings: book.data, departments: dep.data }
 }
 
 /** Felder einer manuellen Planungs-Buchung (Anlegen/Bearbeiten). */

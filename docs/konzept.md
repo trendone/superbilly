@@ -76,7 +76,8 @@ employees (
   name          text not null,
   email         text unique,        -- Mapping-Schlüssel (Personio/SSO)
   weekly_hours  numeric not null,
-  active        bool default true
+  active        bool default true,
+  department_id uuid references departments on delete set null  -- eindeutige Abteilung
 )
 
 employee_hours_periods (            -- abweichende Arbeitszeiten (heute hoursPeriods[])
@@ -85,7 +86,19 @@ employee_hours_periods (            -- abweichende Arbeitszeiten (heute hoursPer
   valid_from   date not null,
   weekly_hours numeric not null
 )
+
+departments (                       -- Abteilung als einfaches Merkmal/Tag je Mitarbeiter
+  id          uuid pk,
+  name        text not null unique,
+  color       text,                 -- für Gruppen-Kopf im Planungsraster/Heatmap
+  sort_order  int  default 0
+)
 ```
+Abteilungen sind ein **eindeutiges** Merkmal je Mitarbeiter (0..1). Sie werden im
+Admin-Bereich gepflegt (anlegen/bearbeiten/löschen) und dienen der **Gruppierung**
+im Planungsraster sowie der Mitarbeiter-Auswertung (Gruppen-Filter +
+Zwischensummen). Löschen einer Abteilung entfernt nie Mitarbeiter
+(`on delete set null` → „ohne Abteilung").
 
 ### 3.2 Projekte (angereichert)
 ```sql
@@ -370,8 +383,8 @@ Plan-vs-Ist (verplante Tage vs. Mite-Ist), Ist-Zeit pro Leistungsart,
 CSV-/Excel-Export, Team-Kapazitäts-Heatmap.
 
 **D. Planungsqualität & Komfort** – deutsche Feiertage als nicht buchbar,
-Überbuchungs-Warnung beim Buchen, Skill-/Rollen-Matrix, Read-only-Management-Link,
-wöchentlicher Digest.
+Überbuchungs-Warnung beim Buchen, Abteilungen (Mitarbeiter-Gruppierung im Raster +
+Auswertung), Skill-/Rollen-Matrix, Read-only-Management-Link, wöchentlicher Digest.
 
 ---
 

@@ -86,6 +86,32 @@ export default function WeekGrid() {
     return m
   }, [data])
 
+  // Mitarbeiter nach Abteilung gruppieren (Reihenfolge wie geladen: sort_order,
+  // dann Name). „Ohne Abteilung" kommt zuletzt. Leere Abteilungen werden nicht
+  // gezeigt. Ohne angelegte Abteilungen bleibt die Ansicht flach (kein Header).
+  const groups = useMemo(() => {
+    if (!data) return []
+    const byDept = new Map<string, typeof data.employees>()
+    const none: typeof data.employees = []
+    for (const e of data.employees) {
+      if (e.department_id) {
+        const arr = byDept.get(e.department_id) ?? []
+        arr.push(e)
+        byDept.set(e.department_id, arr)
+      } else none.push(e)
+    }
+    const out: { id: string | null; name: string; color: string | null; emps: typeof data.employees }[] = []
+    if (data.departments.length === 0) {
+      return [{ id: null, name: '', color: null, emps: data.employees }]
+    }
+    for (const d of data.departments) {
+      const emps = byDept.get(d.id)
+      if (emps && emps.length) out.push({ id: d.id, name: d.name, color: d.color, emps })
+    }
+    if (none.length) out.push({ id: null, name: 'Ohne Abteilung', color: null, emps: none })
+    return out
+  }, [data])
+
   const isAbsence = (p: Project | undefined) =>
     !!p && p.is_system && (ABSENCE_CATEGORIES as readonly string[]).includes(p.name)
 
@@ -245,7 +271,19 @@ export default function WeekGrid() {
             )
           })}
 
-          {data.employees.map((emp) => {
+          {groups.map((g) => (
+            <Fragment key={g.id ?? '__none__'}>
+              {g.name && (
+                <div
+                  className="grid-group"
+                  style={{ gridColumn: '1 / -1', borderLeftColor: g.color ?? undefined }}
+                >
+                  {g.color && <span className="grid-group-dot" style={{ background: g.color }} />}
+                  {g.name}
+                  <span className="grid-group-count">{g.emps.length}</span>
+                </div>
+              )}
+              {g.emps.map((emp) => {
             const cap = capacityFor(emp.id, Number(emp.weekly_hours))
             const over = cap.pct > 100
             return (
@@ -310,7 +348,9 @@ export default function WeekGrid() {
                 })}
               </Fragment>
             )
-          })}
+              })}
+            </Fragment>
+          ))}
         </div>
         </div>
       )}
