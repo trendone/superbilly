@@ -14,6 +14,25 @@ import { holidayName } from '../lib/holidays'
 import { ABSENCE_CATEGORIES } from '../lib/analytics'
 import BookingModal from './BookingModal'
 
+// Kachelfarben im Planungsraster (kategoriebasiert, unabhängig von projects.color):
+// Workshop = dunkelgrün, Kundenprojekt = grün, Frei/Kurzarbeit = kaminrot,
+// übrige System-Kategorien (Urlaub/Krank/Admin) = blau.
+const TILE = {
+  workshop: '#166534',
+  customer: '#22c55e',
+  kaminrot: '#9c2d1f',
+  system: '#2563eb',
+  none: '#94a3b8',
+} as const
+const KAMINROT_CATEGORIES = ['Frei', 'Kurzarbeit']
+
+function tileColor(p: Project | undefined, isWorkshop: boolean): string {
+  if (isWorkshop) return TILE.workshop
+  if (!p) return TILE.none
+  if (p.is_system) return KAMINROT_CATEGORIES.includes(p.name) ? TILE.kaminrot : TILE.system
+  return TILE.customer
+}
+
 type Selection = { empId: string; startISO: string; endISO: string }
 type ModalState =
   | { mode: 'add'; empId: string; empName: string; start: string; end: string }
@@ -266,7 +285,7 @@ export default function WeekGrid() {
                     )}
                     {bookingsFor(emp.id, day).map((b) => {
                       const p = projById.get(b.project_id)
-                      const color = p?.color ?? '#94a3b8'
+                      const color = tileColor(p, b.is_workshop)
                       return (
                         <div
                           key={b.id}

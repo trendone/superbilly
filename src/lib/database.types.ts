@@ -86,6 +86,7 @@ export type Database = {
           end_date: string
           external_id: string | null
           id: string
+          is_workshop: boolean
           locked: boolean
           note: string | null
           project_id: string
@@ -100,6 +101,7 @@ export type Database = {
           end_date: string
           external_id?: string | null
           id?: string
+          is_workshop?: boolean
           locked?: boolean
           note?: string | null
           project_id: string
@@ -114,6 +116,7 @@ export type Database = {
           end_date?: string
           external_id?: string | null
           id?: string
+          is_workshop?: boolean
           locked?: boolean
           note?: string | null
           project_id?: string

@@ -946,3 +946,16 @@ code {
   pointer-events: none;
   z-index: 1;
 }
+
+.workshop-check {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.workshop-check input { width: auto; min-width: 0; cursor: pointer; }

@@ -43,6 +43,7 @@ export default function BookingModal({
   const [end, setEnd] = useState(initial?.end_date ?? defaultEnd ?? defaultStart ?? '')
   const [budget, setBudget] = useState<number>(initial ? Number(initial.budget) : 0.5)
   const [note, setNote] = useState(initial?.note ?? '')
+  const [isWorkshop, setIsWorkshop] = useState(initial?.is_workshop ?? false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [booked, setBooked] = useState<number | null>(null)
@@ -151,6 +152,7 @@ export default function BookingModal({
         end_date: end,
         budget,
         note: note.trim() || null,
+        is_workshop: isWorkshop,
       })
     } catch (e) {
       setErr((e as Error).message)
@@ -174,21 +176,21 @@ export default function BookingModal({
               Projekt
               <select value={projectId} onChange={(e) => setProjectId(e.target.value)} autoFocus>
                 <option value="">— Projekt wählen —</option>
+                {system.length > 0 && (
+                  <optgroup label="Abwesenheit / Intern">
+                    {system.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
                 {real.length > 0 && (
                   <optgroup label="Projekte">
                     {real.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                         {p.client ? ` (${p.client})` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {system.length > 0 && (
-                  <optgroup label="Abwesenheit / Intern">
-                    {system.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
                       </option>
                     ))}
                   </optgroup>
@@ -225,6 +227,15 @@ export default function BookingModal({
               1 Tag
             </button>
           </div>
+
+          <label className="workshop-check">
+            <input
+              type="checkbox"
+              checked={isWorkshop}
+              onChange={(e) => setIsWorkshop(e.target.checked)}
+            />
+            Workshop
+          </label>
 
           {dayWarn && (
             <div className="budget-info over">

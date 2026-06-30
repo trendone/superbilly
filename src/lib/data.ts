@@ -41,6 +41,7 @@ export interface BookingInput {
   end_date: string
   budget: number
   note: string | null
+  is_workshop: boolean
 }
 
 export async function createBooking(input: BookingInput): Promise<Booking> {
