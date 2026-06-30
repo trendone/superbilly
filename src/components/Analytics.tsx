@@ -120,7 +120,7 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
   const [sub, setSub] = useState<SubTab>('projekte')
 
   // Mitarbeiter-Controls
-  const [period, setPeriod] = useState<Period>('6m')
+  const [period, setPeriod] = useState<Period>('year')
   const [year, setYear] = useState(() => new Date().getFullYear())
   const [selected, setSelected] = useState<Selected | null>(null)
 
