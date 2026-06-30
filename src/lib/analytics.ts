@@ -37,6 +37,22 @@ export interface AnalyticsData {
   departments: Department[]
 }
 
+// PostgREST liefert pro Request standardmäßig max. 1000 Zeilen. Für Tabellen, die
+// das überschreiten können (bookings), seitenweise nachladen, sonst fehlen Daten
+// in der Auswertung (z. B. Mitarbeiter mit 0 %, obwohl verplant).
+const PAGE = 1000
+async function fetchAll<T>(table: 'bookings'): Promise<T[]> {
+  const s = supabase!
+  const out: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await s.from(table).select('*').range(from, from + PAGE - 1)
+    if (error) throw error
+    out.push(...(data as T[]))
+    if (data.length < PAGE) break
+  }
+  return out
+}
+
 /** Lädt alle Daten, die beide Auswertungen brauchen, in einem Rutsch. */
 export async function fetchAnalytics(): Promise<AnalyticsData> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
@@ -44,7 +60,7 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
   const [emp, proj, book, periods, ms, act, pact, dep] = await Promise.all([
     supabase.from('employees').select('*').eq('active', true).order('name'),
     supabase.from('projects').select('*').order('name'),
-    supabase.from('bookings').select('*'),
+    fetchAll<Booking>('bookings'),
     supabase.from('employee_hours_periods').select('*'),
     supabase.from('milestones').select('*'),
     supabase.from('actuals').select('*'),
@@ -54,7 +70,6 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
 
   if (emp.error) throw emp.error
   if (proj.error) throw proj.error
-  if (book.error) throw book.error
   if (periods.error) throw periods.error
   if (ms.error) throw ms.error
   if (act.error) throw act.error
@@ -64,7 +79,7 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
   return {
     employees: emp.data,
     projects: proj.data,
-    bookings: book.data,
+    bookings: book,
     hoursPeriods: periods.data,
     milestones: ms.data,
     actuals: act.data,
