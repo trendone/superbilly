@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   fetchProjectDetail,
-  fetchProjects,
+  fetchProjectsView,
   PROJECT_STATES,
   updateProject,
   type Project,
   type ProjectDetail,
+  type ProjectsView,
 } from '../lib/projects'
 import { workingDaysBetween } from '../lib/dates'
 import {
@@ -32,16 +33,41 @@ function fmtDate(iso: string | null): string {
 }
 
 export default function Projects() {
-  const [projects, setProjects] = useState<Project[] | null>(null)
+  const [view, setView] = useState<ProjectsView | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Filter
+  const [empFilter, setEmpFilter] = useState('alle')
+  const [statusFilter, setStatusFilter] = useState('alle')
+  const [originFilter, setOriginFilter] = useState('alle') // alle | kunde | intern
+  const [catFilter, setCatFilter] = useState('alle')
+
   function load() {
-    fetchProjects()
-      .then(setProjects)
+    fetchProjectsView()
+      .then(setView)
       .catch((e) => setError(e.message ?? String(e)))
   }
   useEffect(load, [])
+
+  // Distinkte Kategorien für das Dropdown.
+  const categories = useMemo(() => {
+    const s = new Set<string>()
+    view?.projects.forEach((p) => p.categoryLabel && s.add(p.categoryLabel))
+    return [...s].sort((a, b) => a.localeCompare(b, 'de'))
+  }, [view])
+
+  const filtered = useMemo(() => {
+    if (!view) return []
+    return view.projects.filter((p) => {
+      if (empFilter !== 'alle' && !p.employeeIds.includes(empFilter)) return false
+      if (statusFilter !== 'alle' && p.status !== statusFilter) return false
+      if (originFilter === 'kunde' && p.source !== 'zoho') return false
+      if (originFilter === 'intern' && p.source === 'zoho') return false
+      if (catFilter !== 'alle' && p.categoryLabel !== catFilter) return false
+      return true
+    })
+  }, [view, empFilter, statusFilter, originFilter, catFilter])
 
   if (selected) {
     return (
@@ -58,10 +84,77 @@ export default function Projects() {
   return (
     <div className="dash">
       {error && <div className="status err">✕ {error}</div>}
-      {!projects && <div className="status pending">… lädt</div>}
-      {projects && projects.length === 0 && <p className="hint">Noch keine Projekte angelegt.</p>}
+      {!view && <div className="status pending">… lädt</div>}
+
+      {view && (
+        <div className="ana-toolbar">
+          <label>
+            Mitarbeiter{' '}
+            <select
+              className="field-inline"
+              value={empFilter}
+              onChange={(e) => setEmpFilter(e.target.value)}
+            >
+              <option value="alle">Alle</option>
+              {view.employees.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Status{' '}
+            <select
+              className="field-inline"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="alle">Alle</option>
+              {PROJECT_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Herkunft{' '}
+            <select
+              className="field-inline"
+              value={originFilter}
+              onChange={(e) => setOriginFilter(e.target.value)}
+            >
+              <option value="alle">Alle</option>
+              <option value="kunde">Kundenprojekt (Zoho)</option>
+              <option value="intern">Intern</option>
+            </select>
+          </label>
+          <label>
+            Kategorie{' '}
+            <select
+              className="field-inline"
+              value={catFilter}
+              onChange={(e) => setCatFilter(e.target.value)}
+            >
+              <option value="alle">Alle</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="dim">{filtered.length} Projekte</span>
+        </div>
+      )}
+
+      {view && view.projects.length === 0 && <p className="hint">Noch keine Projekte angelegt.</p>}
+      {view && view.projects.length > 0 && filtered.length === 0 && (
+        <p className="hint">Keine Projekte für diesen Filter.</p>
+      )}
       <div className="proj-grid">
-        {projects?.map((p) => (
+        {filtered.map((p) => (
           <button key={p.id} className="proj-card" onClick={() => setSelected(p.id)}>
             <span className="proj-card-bar" style={{ background: p.color ?? '#94a3b8' }} />
             <div className="proj-card-body">
@@ -69,6 +162,12 @@ export default function Projects() {
               <div className="proj-card-client">{p.client ?? 'Kein Kunde'}</div>
               <div className="proj-card-meta">
                 <span className={`status-pill st-${p.status}`}>{p.status}</span>
+                {p.source === 'zoho' ? (
+                  <span className="proj-tag">Zoho</span>
+                ) : (
+                  <span className="proj-tag proj-tag-intern">Intern</span>
+                )}
+                {p.categoryLabel && <span className="proj-tag">{p.categoryLabel}</span>}
                 {p.budget_eur != null && <span>{eur.format(Number(p.budget_eur))}</span>}
                 {p.budget_days != null && <span>{Number(p.budget_days)} Tage</span>}
               </div>

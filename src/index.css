@@ -463,6 +463,18 @@ code {
 .proj-card-client { font-size: 13px; color: var(--muted); margin: 2px 0 8px; }
 .proj-card-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
 
+/* Kleine Merkmal-Tags auf der Projektkarte (Herkunft, Kategorie) */
+.proj-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 2px 7px;
+  background: #eef2ff;
+  color: #4338ca;
+}
+.proj-tag-intern { background: #f1f5f9; color: var(--muted); }
+
 /* Status-Pill (geteilt: Projekt- und Rechnungsstatus) */
 .status-pill {
   display: inline-block;
