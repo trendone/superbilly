@@ -798,8 +798,12 @@ code {
   margin-bottom: 10px;
   font-size: 14px;
 }
-.drill-close {
+.drill-open {
   margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.drill-close {
   border: none;
   background: none;
   cursor: pointer;

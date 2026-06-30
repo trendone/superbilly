@@ -114,7 +114,7 @@ interface Selected {
   win: MonthWindow
 }
 
-export default function Analytics() {
+export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => void }) {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -285,6 +285,7 @@ export default function Analytics() {
           kpis={kpis}
           selected={selected}
           setSelected={setSelected}
+          onOpenWeek={onOpenWeek}
         />
       )}
     </div>
@@ -507,6 +508,7 @@ function EmployeesView({
   kpis,
   selected,
   setSelected,
+  onOpenWeek,
 }: {
   data: AnalyticsData
   months: MonthWindow[]
@@ -517,6 +519,7 @@ function EmployeesView({
   kpis: ReturnType<typeof teamKpis> | null
   selected: Selected | null
   setSelected: (s: Selected | null) => void
+  onOpenWeek?: (d: Date) => void
 }) {
   const [deptFilter, setDeptFilter] = useState<string>('alle') // 'alle' | dept.id | 'none'
 
@@ -712,6 +715,15 @@ function EmployeesView({
         <div className="drill">
           <div className="drill-head">
             <strong>{selected.emp.name}</strong> · {selected.win.label}
+            {onOpenWeek && (
+              <button
+                className="btn-ghost drill-open"
+                title="Diesen Monat im Planungsraster öffnen"
+                onClick={() => onOpenWeek(new Date(selected.win.year, selected.win.month, 1))}
+              >
+                📅 Im Raster öffnen
+              </button>
+            )}
             <button className="drill-close" onClick={() => setSelected(null)}>✕</button>
           </div>
           {detail.length === 0 ? (

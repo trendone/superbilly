@@ -38,8 +38,8 @@ type ModalState =
   | { mode: 'add'; empId: string; empName: string; start: string; end: string }
   | { mode: 'edit'; empName: string; booking: Booking }
 
-export default function WeekGrid() {
-  const [monday, setMonday] = useState(() => mondayOf(new Date()))
+export default function WeekGrid({ initialMonday }: { initialMonday?: Date | null }) {
+  const [monday, setMonday] = useState(() => mondayOf(initialMonday ?? new Date()))
   const [weeks, setWeeks] = useState<1 | 2>(1)
   const [data, setData] = useState<WeekData | null>(null)
   const [error, setError] = useState<string | null>(null)

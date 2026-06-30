@@ -13,6 +13,8 @@ type Tab = 'raster' | 'projekte' | 'dashboard' | 'auswertung' | 'admin'
 export default function App() {
   const { session, loading } = useSession()
   const [tab, setTab] = useState<Tab>('raster')
+  // Sprung aus der Auswertung ins Planungsraster zu einem bestimmten Monat.
+  const [jumpWeek, setJumpWeek] = useState<Date | null>(null)
 
   if (!supabaseConfigured) {
     return (
@@ -50,7 +52,7 @@ export default function App() {
         <nav className="tabs">
           <button
             className={`tab${tab === 'raster' ? ' active' : ''}`}
-            onClick={() => setTab('raster')}
+            onClick={() => { setTab('raster'); setJumpWeek(null) }}
           >
             Billy
           </button>
@@ -87,10 +89,12 @@ export default function App() {
         </div>
       </header>
       <main className="main">
-        {tab === 'raster' && <WeekGrid />}
+        {tab === 'raster' && <WeekGrid initialMonday={jumpWeek} />}
         {tab === 'projekte' && <Projects />}
         {tab === 'dashboard' && <Dashboard />}
-        {tab === 'auswertung' && <Analytics />}
+        {tab === 'auswertung' && (
+          <Analytics onOpenWeek={(d) => { setJumpWeek(d); setTab('raster') }} />
+        )}
         {tab === 'admin' && <Admin />}
       </main>
     </div>
