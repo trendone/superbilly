@@ -101,6 +101,21 @@ export default function WeekGrid() {
     }
   }
 
+  // Tages-Überbuchung: Arbeitsbudget (ohne Abwesenheit) übersteigt die um
+  // Abwesenheit/Feiertag reduzierte Tageskapazität dieses Mitarbeiters.
+  function dayOverload(empId: string, weeklyHours: number, day: Date) {
+    let work = 0
+    let absence = 0
+    for (const b of bookingsFor(empId, day)) {
+      const p = projById.get(b.project_id)
+      if (isAbsence(p)) absence += Number(b.budget)
+      else work += Number(b.budget)
+    }
+    const cap = holidayName(toISODate(day)) ? 0 : weeklyHours / 40
+    const avail = Math.max(0, cap - absence)
+    return work > avail + 1e-9 ? Math.round(work * 10) / 10 : null
+  }
+
   const isToday = (d: Date) => toISODate(d) === toISODate(new Date())
   const inSel = (empId: string, iso: string) =>
     sel != null &&
@@ -234,15 +249,21 @@ export default function WeekGrid() {
 
                 {days.map((day, i) => {
                   const iso = toISODate(day)
+                  const over = dayOverload(emp.id, Number(emp.weekly_hours), day)
                   return (
                   <div
                     key={i}
                     className={`gc cell editable${isToday(day) ? ' is-today' : ''}${
                       holidayName(iso) ? ' is-holiday' : ''
-                    }${weeks === 2 && i === 5 ? ' week-sep' : ''}${inSel(emp.id, iso) ? ' cell-sel' : ''}`}
+                    }${weeks === 2 && i === 5 ? ' week-sep' : ''}${inSel(emp.id, iso) ? ' cell-sel' : ''}${
+                      over != null ? ' cell-over' : ''
+                    }`}
                     onPointerDown={(e) => cellDown(e, emp.id, iso)}
                     onPointerEnter={() => cellEnter(emp.id, iso)}
                   >
+                    {over != null && (
+                      <span className="cell-over-badge" title="Tag überbucht">⚠ {over} T</span>
+                    )}
                     {bookingsFor(emp.id, day).map((b) => {
                       const p = projById.get(b.project_id)
                       const color = p?.color ?? '#94a3b8'
@@ -275,9 +296,14 @@ export default function WeekGrid() {
         </div>
       )}
 
-      {modal && data && (
+      {modal && data && (() => {
+        const empId = modal.mode === 'edit' ? modal.booking.employee_id : modal.empId
+        const emp = data.employees.find((e) => e.id === empId)
+        return (
         <BookingModal
           employeeName={modal.empName}
+          employeeId={empId}
+          dailyCapacity={Number(emp?.weekly_hours ?? 40) / 40}
           projects={data.projects}
           initial={modal.mode === 'edit' ? modal.booking : undefined}
           defaultStart={modal.mode === 'add' ? modal.start : undefined}
@@ -286,7 +312,8 @@ export default function WeekGrid() {
           onDelete={modal.mode === 'edit' ? handleDelete : undefined}
           onCancel={() => setModal(null)}
         />
-      )}
+        )
+      })()}
 
       <p className="hint">
         Zelle ziehen oder antippen zum Planen · Buchung anklicken zum Bearbeiten ·{' '}

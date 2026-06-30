@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import type { Database } from './database.types'
-import { workingDaysBetween } from './dates'
+import { toISODate, workingDaysBetween } from './dates'
 
 export type Employee = Database['public']['Tables']['employees']['Row']
 export type Project = Database['public']['Tables']['projects']['Row']
@@ -70,6 +70,48 @@ export async function deleteBooking(id: string): Promise<void> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
   const { error } = await supabase.from('bookings').delete().eq('id', id)
   if (error) throw error
+}
+
+/**
+ * Tageslast eines Mitarbeiters im Zeitraum [start..end]: je Tag die Summe der
+ * Arbeits- bzw. Abwesenheits-Budgets aus bestehenden Buchungen. Dient der
+ * Tages-Überbuchungs-Prüfung im Buchungs-Modal.
+ */
+export async function employeeDayLoads(
+  employeeId: string,
+  startISO: string,
+  endISO: string,
+  absenceProjectIds: Set<string>,
+  excludeId?: string,
+): Promise<Record<string, { work: number; absence: number }>> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id,start_date,end_date,budget,project_id')
+    .eq('employee_id', employeeId)
+    .lte('start_date', endISO)
+    .gte('end_date', startISO)
+  if (error) throw error
+
+  const loads: Record<string, { work: number; absence: number }> = {}
+  for (const b of data) {
+    if (b.id === excludeId) continue
+    const isAbs = absenceProjectIds.has(b.project_id)
+    const d = new Date(`${b.start_date}T00:00:00`)
+    const last = new Date(`${b.end_date}T00:00:00`)
+    while (d <= last) {
+      const wd = d.getDay()
+      const iso = toISODate(d)
+      if (wd !== 0 && wd !== 6 && iso >= startISO && iso <= endISO) {
+        const cur = loads[iso] ?? { work: 0, absence: 0 }
+        if (isAbs) cur.absence += Number(b.budget)
+        else cur.work += Number(b.budget)
+        loads[iso] = cur
+      }
+      d.setDate(d.getDate() + 1)
+    }
+  }
+  return loads
 }
 
 /** Summe verplanter Arbeitstage eines Projekts (alle Buchungen, optional eine ausgenommen). */

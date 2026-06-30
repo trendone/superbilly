@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { projectBookedDays, type Booking, type BookingInput, type Project } from '../lib/data'
-import { STANDARD_DAY_RATE } from '../lib/analytics'
+import {
+  employeeDayLoads,
+  projectBookedDays,
+  type Booking,
+  type BookingInput,
+  type Project,
+} from '../lib/data'
+import { ABSENCE_CATEGORIES, STANDARD_DAY_RATE } from '../lib/analytics'
+import { holidayName } from '../lib/holidays'
+import { addDays, formatDay, toISODate } from '../lib/dates'
 
 /**
  * Anlegen/Bearbeiten einer Planungs-Buchung – portiert das Task-Modal der alten
@@ -9,6 +17,8 @@ import { STANDARD_DAY_RATE } from '../lib/analytics'
  */
 export default function BookingModal({
   employeeName,
+  employeeId,
+  dailyCapacity,
   projects,
   initial,
   defaultStart,
@@ -18,6 +28,8 @@ export default function BookingModal({
   onCancel,
 }: {
   employeeName: string
+  employeeId: string
+  dailyCapacity: number
   projects: Project[]
   initial?: Booking
   defaultStart?: string
@@ -34,6 +46,7 @@ export default function BookingModal({
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [booked, setBooked] = useState<number | null>(null)
+  const [dayWarn, setDayWarn] = useState<{ date: string; total: number; avail: number } | null>(null)
 
   // Projekte vs. System-Kategorien für die gruppierte Auswahl.
   const { real, system } = useMemo(() => {
@@ -44,7 +57,18 @@ export default function BookingModal({
     return { real, system }
   }, [projects])
 
+  const absenceIds = useMemo(
+    () =>
+      new Set(
+        projects
+          .filter((p) => p.is_system && (ABSENCE_CATEGORIES as readonly string[]).includes(p.name))
+          .map((p) => p.id),
+      ),
+    [projects],
+  )
+
   const selected = projects.find((p) => p.id === projectId)
+  const isAbsenceProject = !!projectId && absenceIds.has(projectId)
 
   // Budget-Tage des gewählten Projekts (explizit oder aus € / Tagessatz abgeleitet).
   const budgetDays = useMemo(() => {
@@ -69,6 +93,39 @@ export default function BookingModal({
       cancelled = true
     }
   }, [projectId, budgetDays, initial?.id])
+
+  // Tages-Überbuchung prüfen: pro Arbeitstag im Zeitraum würde diese Buchung
+  // die (um Abwesenheit reduzierte) Tageskapazität übersteigen. Nur warnen.
+  useEffect(() => {
+    let cancelled = false
+    setDayWarn(null)
+    if (!projectId || isAbsenceProject || !start || !end || end < start) return
+    employeeDayLoads(employeeId, start, end, absenceIds, initial?.id)
+      .then((loads) => {
+        if (cancelled) return
+        let worst: { date: string; total: number; avail: number } | null = null
+        let d = new Date(`${start}T00:00:00`)
+        const last = new Date(`${end}T00:00:00`)
+        while (d <= last) {
+          const iso = toISODate(d)
+          const wd = d.getDay()
+          if (wd !== 0 && wd !== 6) {
+            const lo = loads[iso] ?? { work: 0, absence: 0 }
+            const cap = holidayName(iso) ? 0 : dailyCapacity
+            const avail = Math.max(0, cap - lo.absence)
+            const total = Math.round((lo.work + budget) * 10) / 10
+            if (total > avail + 1e-9 && (!worst || total - avail > worst.total - worst.avail))
+              worst = { date: iso, total, avail: Math.round(avail * 10) / 10 }
+          }
+          d = addDays(d, 1)
+        }
+        setDayWarn(worst)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, isAbsenceProject, start, end, budget, employeeId, absenceIds, dailyCapacity, initial?.id])
 
   function onStartChange(v: string) {
     setStart(v)
@@ -168,6 +225,13 @@ export default function BookingModal({
               1 Tag
             </button>
           </div>
+
+          {dayWarn && (
+            <div className="budget-info over">
+              ⚠ Tag überbucht ({formatDay(new Date(`${dayWarn.date}T00:00:00`))}): {dayWarn.total} /{' '}
+              {dayWarn.avail} Tag verplant
+            </div>
+          )}
 
           {remaining != null && (
             <div className={`budget-info ${remaining <= 0 ? 'over' : 'ok'}`}>

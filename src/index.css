@@ -930,3 +930,19 @@ code {
   .modal-card .ms-form-grid { grid-template-columns: 1fr 1fr; }
   .modal-overlay { padding: 4vh 10px 10px; align-items: flex-end; }
 }
+
+/* Tages-Überbuchung */
+.cell.cell-over { box-shadow: inset 0 0 0 2px var(--red, #dc2626); }
+.cell-over-badge {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--red, #dc2626);
+  background: rgba(248, 113, 113, 0.16);
+  border-radius: 5px;
+  padding: 1px 5px;
+  pointer-events: none;
+  z-index: 1;
+}
