@@ -700,16 +700,21 @@ code {
 }
 .year-nav span { font-weight: 600; min-width: 38px; text-align: center; }
 
-/* Budget-Auslastungsbalken in der Projekt-Tabelle */
-.ana-table .bar-cell { min-width: 180px; }
+/* Spaltengruppen-Trenner (Budget | Tage | Abweichung | Status) */
+.ana-table th.group-start,
+.ana-table td.group-start { border-left: 1px solid var(--border); }
+
+/* Budget-/Verbrauchsbalken in der Projekt-Tabelle */
+.ana-table .bar-cell { width: 96px; text-align: right; }
 .ba-bar {
-  height: 8px;
-  border-radius: 4px;
+  height: 6px;
+  border-radius: 3px;
   background: #eef2f7;
   overflow: hidden;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
-.ba-bar span { display: block; height: 100%; background: var(--accent); }
+.ba-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.ba-pct { font-size: 12px; font-weight: 600; line-height: 1.1; }
 
 /* Prognose-/Health-Badge */
 .badge {
