@@ -358,6 +358,87 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
   })
 }
 
+// ── Projekt-KPIs (Dashboard-Leiste über der Tabelle) ───────────────────────
+
+export interface ProjectKpis {
+  year: number
+  count: number // produktive Projekte mit Aktivität im laufenden Jahr
+  plannedDaysYear: number // verplante Tage im laufenden Jahr (alle Mitarbeiter)
+  overBudget: number // Plan > Budget(T)
+  underBudget: number // Plan ≤ Budget(T)
+  withBudget: number // Projekte mit definiertem Budget
+  overdue: number // end_date < heute, nicht abgeschlossen
+  mitePct: number // % der Jahres-Projekte mit Mite-Ist
+  budgetEurYear: number // Summe Budget € der Jahres-Projekte
+  openEur: number // Summe offener Faktura €
+}
+
+/** Kennzahlen über die produktiven Projekte des laufenden Kalenderjahres. */
+export function projectKpis(data: AnalyticsData, stats: ProjectStat[], today = new Date()): ProjectKpis {
+  const year = today.getFullYear()
+  const yStart = `${year}-01-01`
+  const yEnd = `${year}-12-31`
+  const tIso = todayISO()
+  const projById = new Map(data.projects.map((p) => [p.id, p]))
+
+  // Verplante Tage je Projekt im laufenden Jahr (Buchungen auf das Jahr beschnitten).
+  const plannedByProj = new Map<string, number>()
+  let plannedDaysYear = 0
+  for (const b of data.bookings) {
+    const p = projById.get(b.project_id)
+    if (!p || p.is_system) continue
+    const s = b.start_date < yStart ? yStart : b.start_date
+    const e = b.end_date > yEnd ? yEnd : b.end_date
+    if (s > e) continue
+    const d = workdaysNoHolidays(s, e) * Number(b.budget)
+    plannedByProj.set(b.project_id, (plannedByProj.get(b.project_id) ?? 0) + d)
+    plannedDaysYear += d
+  }
+
+  // Projekte mit Aktivität im Jahr: verplante Tage > 0 ODER Meilenstein fällig im Jahr.
+  const statByProj = new Map(stats.map((s) => [s.project.id, s]))
+  const activeIds = new Set<string>()
+  for (const [id, d] of plannedByProj) if (d > 0) activeIds.add(id)
+  for (const m of data.milestones) {
+    if (m.due_date && m.due_date >= yStart && m.due_date <= yEnd && statByProj.has(m.project_id))
+      activeIds.add(m.project_id)
+  }
+
+  let overBudget = 0
+  let underBudget = 0
+  let withBudget = 0
+  let overdue = 0
+  let miteCount = 0
+  let budgetEurYear = 0
+  let openEur = 0
+  for (const id of activeIds) {
+    const st = statByProj.get(id)
+    if (!st) continue
+    if (st.hasMite) miteCount++
+    if (st.budgetEur != null) budgetEurYear += st.budgetEur
+    openEur += st.openEur
+    if (st.project.end_date && st.project.end_date < tIso && st.project.status !== 'abgeschlossen') overdue++
+    if (st.budgetDaysEff != null) {
+      withBudget++
+      if (st.bookedDays > st.budgetDaysEff) overBudget++
+      else underBudget++
+    }
+  }
+
+  return {
+    year,
+    count: activeIds.size,
+    plannedDaysYear: round1(plannedDaysYear),
+    overBudget,
+    underBudget,
+    withBudget,
+    overdue,
+    mitePct: activeIds.size ? Math.round((miteCount / activeIds.size) * 100) : 0,
+    budgetEurYear: Math.round(budgetEurYear),
+    openEur: Math.round(openEur),
+  }
+}
+
 // ── Mitarbeiter-Auswertung ─────────────────────────────────────────────────
 
 export interface MonthWindow {

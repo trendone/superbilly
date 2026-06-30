@@ -4,6 +4,7 @@ import {
   fetchAnalytics,
   monthDetail,
   monthWindow,
+  projectKpis,
   projectStats,
   summarize,
   teamKpis,
@@ -193,6 +194,7 @@ export default function Analytics() {
   }, [allStats, sortKey, sortDir, statusFilter, catFilter])
 
   const kpis = useMemo(() => (data ? teamKpis(data) : null), [data])
+  const projKpis = useMemo(() => (data ? projectKpis(data, allStats) : null), [data, allStats])
 
   function exportProjects() {
     const rows: (string | number)[][] = [
@@ -260,6 +262,7 @@ export default function Analytics() {
       {data && sub === 'projekte' && (
         <ProjectsView
           projects={projects}
+          kpis={projKpis}
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={onSort}
@@ -292,6 +295,7 @@ export default function Analytics() {
 
 function ProjectsView({
   projects,
+  kpis,
   sortKey,
   sortDir,
   onSort,
@@ -302,6 +306,7 @@ function ProjectsView({
   categories,
 }: {
   projects: ProjectStat[]
+  kpis: ReturnType<typeof projectKpis> | null
   sortKey: SortKey
   sortDir: SortDir
   onSort: (k: SortKey) => void
@@ -341,6 +346,42 @@ function ProjectsView({
 
   return (
     <section className="ana-section">
+      {kpis && (
+        <div className="kpis">
+          <div className="kpi">
+            <div className="kpi-label">Projekte · {kpis.year}</div>
+            <div className="kpi-val">{kpis.count}</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Verplante Tage · {kpis.year}</div>
+            <div className="kpi-val">{kpis.plannedDaysYear} <span className="kpi-unit">T</span></div>
+          </div>
+          <div className={`kpi${kpis.overBudget > 0 ? ' kpi-alert' : ''}`}>
+            <div className="kpi-label">Über Budget</div>
+            <div className="kpi-val">{kpis.overBudget}<span className="kpi-unit"> / {kpis.withBudget}</span></div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Im Budget</div>
+            <div className="kpi-val">{kpis.underBudget}<span className="kpi-unit"> / {kpis.withBudget}</span></div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Mite-getrackt</div>
+            <div className="kpi-val">{kpis.mitePct}<span className="kpi-unit">%</span></div>
+          </div>
+          <div className={`kpi${kpis.overdue > 0 ? ' kpi-alert' : ''}`}>
+            <div className="kpi-label">Überfällig</div>
+            <div className="kpi-val">{kpis.overdue}</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Budget gesamt</div>
+            <div className="kpi-val kpi-eur">{eur.format(kpis.budgetEurYear)}</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Offen (Faktura)</div>
+            <div className="kpi-val kpi-eur">{eur.format(kpis.openEur)}</div>
+          </div>
+        </div>
+      )}
       <div className="ana-toolbar">
         <label>
           Status{' '}
@@ -368,7 +409,7 @@ function ProjectsView({
       {projects.length === 0 ? (
         <p className="muted">Keine Projekte für diesen Filter.</p>
       ) : (
-        <div className="table-scroll">
+        <div className="table-scroll scroll-y">
         <table className="ana-table">
           <thead>
             <tr>

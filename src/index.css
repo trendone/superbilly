@@ -200,29 +200,37 @@ code {
 /* Scroll-Wrapper trägt Rahmen/Radius/Overflow – NICHT .grid selbst, sonst
    würde .grid die Spalten clippen und die sticky-Spalte bräche (iOS Safari). */
 .grid-scroll {
-  overflow-x: auto;
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
   border-radius: 12px;
+  max-height: calc(100vh - 168px);
 }
 .grid {
   display: grid;
   gap: 1px;
   background: var(--border);
 }
-/* Mitarbeiter-Spalte beim horizontalen Scrollen fixieren. */
-.gh.corner,
-.gc.emp {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-}
-.gh.corner { z-index: 3; }
+/* Mitarbeiter-Spalte horizontal + Wochentag-Kopfzeile vertikal fixieren. */
 .gh {
   background: #f8fafc;
   padding: 10px 12px;
   font-size: 13px;
   font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.gc.emp {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.gh.corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 4;
 }
 .gh span { color: var(--muted); font-weight: 400; }
 .gh.corner { color: var(--muted); }
@@ -315,6 +323,8 @@ code {
 .kpi-val { font-size: 22px; font-weight: 700; }
 .kpi-alert { border-color: var(--red); background: #fff5f5; }
 .kpi-alert .kpi-val { color: var(--red); }
+.kpi-unit { font-size: 13px; font-weight: 600; color: var(--muted); }
+.kpi-val.kpi-eur { font-size: 17px; }
 
 .dash-actions { display: flex; gap: 10px; margin-bottom: 16px; }
 
@@ -582,6 +592,11 @@ code {
   letter-spacing: 0.03em;
   color: var(--muted);
   background: #f8fafc;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* collabierte Border verschwindet beim Sticky → per Schatten nachbilden */
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 .ana-table thead th.sortable:hover {
   color: var(--accent);
@@ -795,6 +810,11 @@ code {
 .table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+/* Vertikal scrollbarer Tabellen-Wrapper mit fixierter Kopfzeile (sticky thead). */
+.table-scroll.scroll-y {
+  overflow: auto;
+  max-height: calc(100vh - 250px);
 }
 
 /* ───────────── Mobile (≤ 760px) ───────────── */
