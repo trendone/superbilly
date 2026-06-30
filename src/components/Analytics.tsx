@@ -136,6 +136,7 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
     }
   }
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('alle')
+  const [originFilter, setOriginFilter] = useState('alle') // alle | kunde | intern
   const [catFilter, setCatFilter] = useState<string>('no-keynote') // Default: Keynotes ausgeblendet
 
   function load() {
@@ -186,11 +187,13 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
   const projects = useMemo(() => {
     let list = allStats
     if (statusFilter !== 'alle') list = list.filter((p) => p.project.status === statusFilter)
+    if (originFilter === 'kunde') list = list.filter((p) => p.project.source === 'zoho')
+    else if (originFilter === 'intern') list = list.filter((p) => p.project.source !== 'zoho')
     if (catFilter === 'no-keynote')
       list = list.filter((p) => !p.productKtr || !(KEYNOTE_KTR as readonly string[]).includes(p.productKtr))
     else if (catFilter !== 'alle') list = list.filter((p) => p.productLabel === catFilter)
     return [...list].sort(cmpBy(sortKey, sortDir))
-  }, [allStats, sortKey, sortDir, statusFilter, catFilter])
+  }, [allStats, sortKey, sortDir, statusFilter, originFilter, catFilter])
 
   const kpis = useMemo(() => (data ? teamKpis(data) : null), [data])
   const projKpis = useMemo(() => (data ? projectKpis(data, allStats) : null), [data, allStats])
@@ -266,6 +269,8 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
           onSort={onSort}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
+          originFilter={originFilter}
+          setOriginFilter={setOriginFilter}
           catFilter={catFilter}
           setCatFilter={setCatFilter}
           categories={categories}
@@ -300,6 +305,8 @@ function ProjectsView({
   onSort,
   statusFilter,
   setStatusFilter,
+  originFilter,
+  setOriginFilter,
   catFilter,
   setCatFilter,
   categories,
@@ -311,6 +318,8 @@ function ProjectsView({
   onSort: (k: SortKey) => void
   statusFilter: StatusFilter
   setStatusFilter: (s: StatusFilter) => void
+  originFilter: string
+  setOriginFilter: (s: string) => void
   catFilter: string
   setCatFilter: (s: string) => void
   categories: string[]
@@ -389,6 +398,14 @@ function ProjectsView({
             <option value="akquise">Akquise</option>
             <option value="pausiert">Pausiert</option>
             <option value="abgeschlossen">Abgeschlossen</option>
+          </select>
+        </label>
+        <label>
+          Herkunft{' '}
+          <select className="field-inline" value={originFilter} onChange={(e) => setOriginFilter(e.target.value)}>
+            <option value="alle">Alle</option>
+            <option value="kunde">Kundenprojekt (Zoho)</option>
+            <option value="intern">Intern</option>
           </select>
         </label>
         <label>
