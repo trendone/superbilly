@@ -15,8 +15,8 @@ import { ABSENCE_CATEGORIES } from '../lib/analytics'
 import BookingModal from './BookingModal'
 
 // Kachelfarben im Planungsraster (kategoriebasiert, unabhängig von projects.color):
-// Workshop = dunkelgrün, Kundenprojekt = grün, Frei/Kurzarbeit/Urlaub = kaminrot,
-// übrige System-Kategorien (Krank/Admin/TS) = blau.
+// Workshop = dunkelgrün, Kundenprojekt = grün, Frei/Kurzarbeit/Urlaub/Krank = kaminrot,
+// übrige System-Kategorien (Admin/TS) = blau.
 const TILE = {
   workshop: '#166534',
   customer: '#22c55e',
@@ -24,7 +24,7 @@ const TILE = {
   system: '#2563eb',
   none: '#94a3b8',
 } as const
-const KAMINROT_CATEGORIES = ['Frei', 'Kurzarbeit', 'Urlaub']
+const KAMINROT_CATEGORIES = ['Frei', 'Kurzarbeit', 'Urlaub', 'Krank']
 
 function tileColor(p: Project | undefined, isWorkshop: boolean): string {
   if (isWorkshop) return TILE.workshop
