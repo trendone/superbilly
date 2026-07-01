@@ -352,11 +352,33 @@ code {
   border-radius: 10px;
   padding: 1px 8px;
 }
+.ms-sum {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.ms-group-title.is-current { color: var(--accent); }
+.ms-group-title.is-current .dot { background: var(--accent); }
+.ms-empty {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 4px;
+  padding: 8px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.ms-outside {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 18px;
+  text-align: center;
+}
 
 .ms-list { display: flex; flex-direction: column; gap: 6px; }
 .ms-row {
   display: grid;
-  grid-template-columns: 4px 1fr 130px 110px 110px 64px;
+  grid-template-columns: 4px 1fr 130px 110px 64px;
   align-items: center;
   gap: 12px;
   background: var(--card);
