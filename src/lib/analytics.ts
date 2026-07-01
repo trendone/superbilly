@@ -379,14 +379,16 @@ export function projectKpis(data: AnalyticsData, stats: ProjectStat[], today = n
   const yStart = `${year}-01-01`
   const yEnd = `${year}-12-31`
   const tIso = todayISO()
-  const projById = new Map(data.projects.map((p) => [p.id, p]))
+
+  // Nur Projekte im aktuellen Filter (die übergebenen stats) zählen, damit die
+  // Status-/Herkunft-/Kategorie-Filter die KPIs oben mit beeinflussen.
+  const statByProj = new Map(stats.map((s) => [s.project.id, s]))
 
   // Verplante Tage je Projekt im laufenden Jahr (Buchungen auf das Jahr beschnitten).
   const plannedByProj = new Map<string, number>()
   let plannedDaysYear = 0
   for (const b of data.bookings) {
-    const p = projById.get(b.project_id)
-    if (!p || p.is_system) continue
+    if (!statByProj.has(b.project_id)) continue
     const s = b.start_date < yStart ? yStart : b.start_date
     const e = b.end_date > yEnd ? yEnd : b.end_date
     if (s > e) continue
@@ -396,7 +398,6 @@ export function projectKpis(data: AnalyticsData, stats: ProjectStat[], today = n
   }
 
   // Projekte mit Aktivität im Jahr: verplante Tage > 0 ODER Meilenstein fällig im Jahr.
-  const statByProj = new Map(stats.map((s) => [s.project.id, s]))
   const activeIds = new Set<string>()
   for (const [id, d] of plannedByProj) if (d > 0) activeIds.add(id)
   for (const m of data.milestones) {

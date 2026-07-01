@@ -13,7 +13,6 @@ import {
   STANDARD_DAY_RATE,
   type AnalyticsData,
   type Employee,
-  type Health,
   type MonthWindow,
   type ProjectStat,
 } from '../lib/analytics'
@@ -33,8 +32,6 @@ function heatColor(pct: number, hasCap: boolean): { bg: string; fg: string } {
   if (pct <= 115) return { bg: '#fef3c7', fg: '#92400e' } // knapp drüber (gelb)
   return { bg: '#fee2e2', fg: '#991b1b' } // überlastet (rot)
 }
-
-const healthTone: Record<Health, string> = { over: 'red', tight: 'amber', ok: 'green', none: 'dim' }
 
 /** Tooltip für die Tagessatz-Zelle: zeigt die definierten Mite-Sätze (× Stunden). */
 function rateTooltip(breakdown: { rate: number; hours: number }[], blended: number | null): string {
@@ -78,7 +75,7 @@ type SubTab = 'projekte' | 'mitarbeiter'
 type Period = '6m' | 'year'
 type SortKey =
   | 'name' | 'budgetEur' | 'dayRate' | 'budgetDays' | 'plan' | 'ist'
-  | 'dIstBud' | 'dIstPlan' | 'verbrauch' | 'forecast' | 'mitarbeiter'
+  | 'dIstBud' | 'verbrauch' | 'mitarbeiter'
 type SortDir = 'asc' | 'desc'
 
 // Sortier-Wert je Spalte (null = ans Ende, unabhängig von der Richtung).
@@ -90,9 +87,7 @@ const SORT_VAL: Record<SortKey, (p: ProjectStat) => number | string | null> = {
   plan: (p) => (p.bookedDays > 0 ? p.bookedDays : null),
   ist: (p) => (p.hasMite ? p.istMiteDays : null),
   dIstBud: (p) => p.deltaIstBudgetDays,
-  dIstPlan: (p) => p.deltaIstPlanDays,
   verbrauch: (p) => p.budgetConsumedPct,
-  forecast: (p) => p.forecast.toLowerCase(),
   mitarbeiter: (p) => p.employeeNames.length || null,
 }
 function cmpBy(key: SortKey, dir: SortDir) {
@@ -132,11 +127,11 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
     if (k === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
     else {
       setSortKey(k)
-      setSortDir(k === 'name' || k === 'forecast' ? 'asc' : 'desc')
+      setSortDir(k === 'name' ? 'asc' : 'desc')
     }
   }
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('alle')
-  const [originFilter, setOriginFilter] = useState('alle') // alle | kunde | intern
+  const [originFilter, setOriginFilter] = useState('kunde') // alle | kunde | intern
   const [catFilter, setCatFilter] = useState<string>('no-keynote') // Default: Keynotes ausgeblendet
 
   function load() {
@@ -196,11 +191,11 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
   }, [allStats, sortKey, sortDir, statusFilter, originFilter, catFilter])
 
   const kpis = useMemo(() => (data ? teamKpis(data) : null), [data])
-  const projKpis = useMemo(() => (data ? projectKpis(data, allStats) : null), [data, allStats])
+  const projKpis = useMemo(() => (data ? projectKpis(data, projects) : null), [data, projects])
 
   function exportProjects() {
     const rows: (string | number)[][] = [
-      ['Projekt', 'Kunde', 'Leistungskategorie', 'KTR', 'Status', 'Budget (€)', 'Tagessatz (€)', 'Tagessatz-Quelle', 'Budget (T)', 'Plan (T)', 'Ist (T)', 'Ist (€)', 'Δ Ist/Budget (T)', 'Δ Ist/Plan (T)', 'Verbrauch %', 'Prognose'],
+      ['Projekt', 'Kunde', 'Leistungskategorie', 'KTR', 'Status', 'Budget (€)', 'Tagessatz (€)', 'Tagessatz-Quelle', 'Budget (T)', 'Plan (T)', 'mite (T)', 'mite (€)', 'Δ mite/Budget (T)', 'Verbrauch %'],
     ]
     for (const p of projects)
       rows.push([
@@ -217,9 +212,7 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
         p.hasMite ? p.istMiteDays : '',
         p.istMiteEur ?? '',
         p.deltaIstBudgetDays ?? '',
-        p.deltaIstPlanDays ?? '',
         p.budgetConsumedPct ?? '',
-        p.forecast,
       ])
     downloadCSV('auswertung-projekte.csv', rows)
   }
@@ -343,11 +336,10 @@ function ProjectsView({
       plan: a.plan + p.bookedDays,
       ist: a.ist + p.istMiteDays,
       dIstBud: a.dIstBud + (p.deltaIstBudgetDays ?? 0),
-      dIstPlan: a.dIstPlan + (p.deltaIstPlanDays ?? 0),
       istEur: a.istEur + (p.istMiteEur ?? 0),
       budEurMite: a.budEurMite + (p.budgetConsumedPct != null ? (p.budgetEur ?? 0) : 0),
     }),
-    { budgetEur: 0, budgetDays: 0, plan: 0, ist: 0, dIstBud: 0, dIstPlan: 0, istEur: 0, budEurMite: 0 },
+    { budgetEur: 0, budgetDays: 0, plan: 0, ist: 0, dIstBud: 0, istEur: 0, budEurMite: 0 },
   )
   const totConsumedPct = tot.budEurMite > 0 ? Math.round((tot.istEur / tot.budEurMite) * 100) : null
 
@@ -375,17 +367,9 @@ function ProjectsView({
             <div className="kpi-label">Mite-getrackt</div>
             <div className="kpi-val">{kpis.mitePct}<span className="kpi-unit">%</span></div>
           </div>
-          <div className={`kpi${kpis.overdue > 0 ? ' kpi-alert' : ''}`}>
-            <div className="kpi-label">Überfällig</div>
-            <div className="kpi-val">{kpis.overdue}</div>
-          </div>
           <div className="kpi">
             <div className="kpi-label">Budget gesamt</div>
             <div className="kpi-val kpi-eur">{eur.format(kpis.budgetEurYear)}</div>
-          </div>
-          <div className="kpi">
-            <div className="kpi-label">Offen (Faktura)</div>
-            <div className="kpi-val kpi-eur">{eur.format(kpis.openEur)}</div>
           </div>
         </div>
       )}
@@ -431,12 +415,10 @@ function ProjectsView({
               {Th('name', 'Projekt')}
               {Th('budgetEur', 'Budget', true, true)}
               {Th('plan', 'Plan (T)', true, true)}
-              {Th('ist', 'Ist (T)', true)}
-              {Th('dIstBud', 'Δ Ist/Budget', true, true)}
-              {Th('dIstPlan', 'Δ Ist/Plan', true)}
+              {Th('ist', 'mite (T)', true)}
+              {Th('dIstBud', 'Δ mite/Budget', true, true)}
               {Th('verbrauch', 'Verbrauch', true)}
-              {Th('forecast', 'Prognose', false, true)}
-              {Th('mitarbeiter', 'Mitarbeiter')}
+              {Th('mitarbeiter', 'Mitarbeiter', false, true)}
             </tr>
           </thead>
           <tbody>
@@ -462,14 +444,11 @@ function ProjectsView({
                 <td className={`num group-start ${p.deltaIstBudgetDays == null ? 'dim' : p.deltaIstBudgetDays < 0 ? 'red' : 'green'}`}>
                   {dT(p.deltaIstBudgetDays)}
                 </td>
-                <td className={`num ${p.deltaIstPlanDays == null ? 'dim' : p.deltaIstPlanDays < 0 ? 'amber' : ''}`}>
-                  {dT(p.deltaIstPlanDays)}
-                </td>
                 <td className="bar-cell">
                   {p.budgetConsumedPct == null ? (
                     <span className="dim">–</span>
                   ) : (
-                    <div title={`${p.budgetConsumedPct}% des Budgets verbraucht (Ist/Budget)`}>
+                    <div title={`${p.budgetConsumedPct}% des Budgets verbraucht (mite/Budget)`}>
                       <div className="ba-bar">
                         <span
                           style={{
@@ -485,10 +464,7 @@ function ProjectsView({
                     </div>
                   )}
                 </td>
-                <td className="group-start">
-                  <span className={`badge ${healthTone[p.health]}`}>{p.forecast}</span>
-                </td>
-                <td className="dim">{p.employeeNames.join(', ') || '–'}</td>
+                <td className="dim group-start">{p.employeeNames.join(', ') || '–'}</td>
               </tr>
             ))}
           </tbody>
@@ -502,11 +478,10 @@ function ProjectsView({
               <td className="num dim group-start">{tot.plan > 0 ? `${Math.round(tot.plan * 10) / 10} T` : '–'}</td>
               <td className="num dim">{tot.ist > 0 ? `${Math.round(tot.ist * 10) / 10} T` : '–'}</td>
               <td className={`num group-start ${tot.dIstBud < 0 ? 'red' : 'green'}`}>{dT(tot.dIstBud)}</td>
-              <td className={`num ${tot.dIstPlan < 0 ? 'amber' : ''}`}>{dT(tot.dIstPlan)}</td>
               <td className={`num ${totConsumedPct == null ? 'dim' : totConsumedPct > 100 ? 'red' : totConsumedPct >= 90 ? 'amber' : 'green'}`}>
                 {totConsumedPct == null ? '–' : `${totConsumedPct}%`}
               </td>
-              <td colSpan={2} className="dim group-start"></td>
+              <td className="dim group-start"></td>
             </tr>
           </tfoot>
         </table>
@@ -514,9 +489,8 @@ function ProjectsView({
       )}
       <p className="hint">
         Drei Größen je Projekt: <b>Budget (T)</b> = Budget-€ / Tagessatz · <b>Plan (T)</b> = verplante Tage ·
-        <b> Ist (T)</b> = getrackte Zeit aus Mite. Tagessatz: <i>aus Mite-Ist</i>, sonst Standard {eur.format(STANDARD_DAY_RATE)} (≈),
-        manuell pro Projekt überschreibbar (✎). Deltas: <b>Ist/Budget</b> = Budget-Rest (<span className="red">rot</span> = über Budget),
-        <b> Ist/Plan</b> = Erfassung vs. Plan (<span className="amber">gelb</span> = weniger getrackt als geplant).
+        <b> mite (T)</b> = getrackte Zeit aus Mite. Tagessatz: <i>aus Mite</i>, sonst Standard {eur.format(STANDARD_DAY_RATE)} (≈),
+        manuell pro Projekt überschreibbar (✎). Delta <b>mite/Budget</b> = Budget-Rest (<span className="red">rot</span> = über Budget).
       </p>
     </section>
   )
