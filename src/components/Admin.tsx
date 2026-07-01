@@ -8,6 +8,8 @@ import {
   deleteEmployee,
   deletePeriod,
   fetchAdmin,
+  grantAdmin,
+  revokeAdmin,
   updateDepartment,
   updateEmployee,
   updateSystemCategory,
@@ -19,7 +21,7 @@ import {
 
 const COLORS = ['#7c6dfa', '#64748b', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#14b8a6', '#0ea5e9']
 
-export default function Admin() {
+export default function Admin({ currentEmail }: { currentEmail: string }) {
   const [data, setData] = useState<AdminData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -44,6 +46,7 @@ export default function Admin() {
       {data && (
         <>
           <EmployeesSection data={data} reload={load} setError={setError} />
+          <RolesSection data={data} reload={load} setError={setError} currentEmail={currentEmail} />
           <DepartmentsSection data={data} reload={load} setError={setError} />
           <CategoriesSection data={data} reload={load} />
         </>
@@ -281,6 +284,108 @@ function EmployeeForm({
         <button type="button" className="btn-ghost" onClick={onCancel}>Abbrechen</button>
       </div>
     </form>
+  )
+}
+
+// ── Rollen / Zugriffsrechte ───────────────────────────────────────────────────
+
+function RolesSection({
+  data, reload, setError, currentEmail,
+}: {
+  data: AdminData
+  reload: () => Promise<void>
+  setError: (s: string | null) => void
+  currentEmail: string
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+
+  // Rollen sind per E-Mail geführt. Zeilen = alle Mitarbeiter mit E-Mail plus
+  // etwaige Admin-Einträge ohne passenden Mitarbeiter (damit sie entziehbar sind).
+  const adminEmails = useMemo(
+    () => new Set(data.roles.filter((r) => r.role === 'admin').map((r) => r.email.toLowerCase())),
+    [data.roles],
+  )
+  const rows = useMemo(() => {
+    const list = data.employees
+      .filter((e) => e.email)
+      .map((e) => ({ email: e.email!.toLowerCase(), name: e.name }))
+    const known = new Set(list.map((r) => r.email))
+    for (const email of adminEmails) {
+      if (!known.has(email)) list.push({ email, name: '— (kein Mitarbeiter)' })
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name))
+  }, [data.employees, adminEmails])
+
+  async function toggle(email: string, makeAdmin: boolean) {
+    setBusy(email); setError(null)
+    try {
+      if (makeAdmin) await grantAdmin(email)
+      else await revokeAdmin(email)
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <section className="ana-section">
+      <div className="ana-toolbar">
+        <h3 className="admin-sec">Zugriffsrechte ({adminEmails.size} Admin{adminEmails.size === 1 ? '' : 's'})</h3>
+      </div>
+      <p className="hint">Nur Admins sehen und nutzen den Bereich „Verwaltung". Alle übrigen angemeldeten Nutzer sind „User" (Planung). Ohne E-Mail kann keine Rolle vergeben werden.</p>
+
+      <div className="table-scroll">
+        <table className="ana-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>E-Mail</th>
+              <th>Rolle</th>
+              <th>Aktion</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const isAdmin = adminEmails.has(r.email)
+              const isSelf = r.email === currentEmail.toLowerCase()
+              return (
+                <tr key={r.email}>
+                  <td>{r.name}</td>
+                  <td className="dim">{r.email}</td>
+                  <td>
+                    {isAdmin
+                      ? <span className="badge" style={{ background: '#7c6dfa22', color: '#7c6dfa' }}>Admin</span>
+                      : <span className="badge dim">User</span>}
+                  </td>
+                  <td className="ms-row-actions">
+                    {isAdmin ? (
+                      <button
+                        className="btn-ghost"
+                        disabled={busy === r.email || isSelf}
+                        title={isSelf ? 'Die eigene Admin-Rolle kann nicht entzogen werden' : 'Admin-Rolle entziehen'}
+                        onClick={() => toggle(r.email, false)}
+                      >
+                        Admin entziehen
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-ghost"
+                        disabled={busy === r.email}
+                        onClick={() => toggle(r.email, true)}
+                      >
+                        Zum Admin machen
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 

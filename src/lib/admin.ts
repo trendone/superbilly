@@ -10,6 +10,7 @@ export type EmployeeUpdate = Database['public']['Tables']['employees']['Update']
 export type HoursPeriod = Database['public']['Tables']['employee_hours_periods']['Row']
 export type Project = Database['public']['Tables']['projects']['Row']
 export type Department = Database['public']['Tables']['departments']['Row']
+export type UserRole = Database['public']['Tables']['user_roles']['Row']
 
 function sb() {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
@@ -21,21 +22,39 @@ export interface AdminData {
   periods: HoursPeriod[]
   systemProjects: Project[]
   departments: Department[]
+  roles: UserRole[]
 }
 
 export async function fetchAdmin(): Promise<AdminData> {
   const s = sb()
-  const [emp, per, proj, dep] = await Promise.all([
+  const [emp, per, proj, dep, rol] = await Promise.all([
     s.from('employees').select('*').order('name'),
     s.from('employee_hours_periods').select('*').order('valid_from'),
     s.from('projects').select('*').eq('is_system', true).order('name'),
     s.from('departments').select('*').order('sort_order').order('name'),
+    s.from('user_roles').select('*').order('email'),
   ])
   if (emp.error) throw emp.error
   if (per.error) throw per.error
   if (proj.error) throw proj.error
   if (dep.error) throw dep.error
-  return { employees: emp.data, periods: per.data, systemProjects: proj.data, departments: dep.data }
+  if (rol.error) throw rol.error
+  return { employees: emp.data, periods: per.data, systemProjects: proj.data, departments: dep.data, roles: rol.data }
+}
+
+// ── Rollen (Zugriffsrechte) ──────────────────────────────────────────────────
+// Admin darf den Bereich „Verwaltung" nutzen. Wer keinen Eintrag hat, ist „user".
+// Schreiben ist per RLS auf Admins beschränkt (is_admin()).
+export async function grantAdmin(email: string): Promise<void> {
+  const { error } = await sb()
+    .from('user_roles')
+    .upsert({ email: email.trim().toLowerCase(), role: 'admin' }, { onConflict: 'email' })
+  if (error) throw error
+}
+export async function revokeAdmin(email: string): Promise<void> {
+  // Zurück auf „user" = Eintrag entfernen (fehlender Eintrag gilt als user).
+  const { error } = await sb().from('user_roles').delete().eq('email', email.trim().toLowerCase())
+  if (error) throw error
 }
 
 // ── Mitarbeiter ──────────────────────────────────────────────────────────

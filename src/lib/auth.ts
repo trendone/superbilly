@@ -39,6 +39,44 @@ export function useSession(): { session: Session | null; loading: boolean } {
   return { session, loading }
 }
 
+export type Role = 'admin' | 'user'
+
+/**
+ * Rolle des angemeldeten Nutzers. Wer nicht in `user_roles` steht, ist „user".
+ * Nur „admin" darf den Bereich „Verwaltung" nutzen (Frontend-Gate + RLS).
+ * `loading` verhindert kurzes Aufblitzen des Admin-Tabs vor der Prüfung.
+ */
+export function useRole(session: Session | null): { role: Role; loading: boolean } {
+  const [role, setRole] = useState<Role>('user')
+  const [loading, setLoading] = useState(true)
+
+  const email = session?.user.email?.toLowerCase() ?? null
+  useEffect(() => {
+    let cancelled = false
+    if (!supabase || !email) {
+      setRole('user')
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    supabase
+      .from('user_roles')
+      .select('role')
+      .eq('email', email)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return
+        setRole(data?.role === 'admin' ? 'admin' : 'user')
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [email])
+
+  return { role, loading }
+}
+
 /** Magic-Link an die angegebene Adresse senden. Wirft bei Fehlern. */
 export async function sendMagicLink(email: string): Promise<void> {
   if (!supabase) throw new Error('Supabase nicht verbunden')

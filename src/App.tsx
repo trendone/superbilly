@@ -7,12 +7,14 @@ import Analytics from './components/Analytics'
 import Admin from './components/Admin'
 import Login from './components/Login'
 import { supabaseConfigured } from './lib/supabase'
-import { signOut, useSession } from './lib/auth'
+import { signOut, useSession, useRole } from './lib/auth'
 
 type Tab = 'raster' | 'projekte' | 'neu' | 'dashboard' | 'auswertung' | 'admin'
 
 export default function App() {
   const { session, loading } = useSession()
+  const { role } = useRole(session)
+  const isAdmin = role === 'admin'
   const [tab, setTab] = useState<Tab>('raster')
   // Sprung aus der Auswertung ins Planungsraster zu einem bestimmten Monat.
   const [jumpWeek, setJumpWeek] = useState<Date | null>(null)
@@ -81,12 +83,14 @@ export default function App() {
           >
             Auswertung
           </button>
-          <button
-            className={`tab${tab === 'admin' ? ' active' : ''}`}
-            onClick={() => setTab('admin')}
-          >
-            Verwaltung
-          </button>
+          {isAdmin && (
+            <button
+              className={`tab${tab === 'admin' ? ' active' : ''}`}
+              onClick={() => setTab('admin')}
+            >
+              Verwaltung
+            </button>
+          )}
         </nav>
         <div className="topbar-right">
           <span className="user-email">{email}</span>
@@ -103,7 +107,7 @@ export default function App() {
         {tab === 'auswertung' && (
           <Analytics onOpenWeek={(d) => { setJumpWeek(d); setTab('raster') }} />
         )}
-        {tab === 'admin' && <Admin />}
+        {tab === 'admin' && isAdmin && <Admin currentEmail={email} />}
       </main>
     </div>
   )
