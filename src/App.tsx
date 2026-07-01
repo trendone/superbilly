@@ -2,13 +2,14 @@ import { useState } from 'react'
 import WeekGrid from './components/WeekGrid'
 import Dashboard from './components/Dashboard'
 import Projects from './components/Projects'
+import NewProjects from './components/NewProjects'
 import Analytics from './components/Analytics'
 import Admin from './components/Admin'
 import Login from './components/Login'
 import { supabaseConfigured } from './lib/supabase'
 import { signOut, useSession } from './lib/auth'
 
-type Tab = 'raster' | 'projekte' | 'dashboard' | 'auswertung' | 'admin'
+type Tab = 'raster' | 'projekte' | 'neu' | 'dashboard' | 'auswertung' | 'admin'
 
 export default function App() {
   const { session, loading } = useSession()
@@ -63,6 +64,12 @@ export default function App() {
             Projekte
           </button>
           <button
+            className={`tab${tab === 'neu' ? ' active' : ''}`}
+            onClick={() => setTab('neu')}
+          >
+            Neue Projekte
+          </button>
+          <button
             className={`tab${tab === 'dashboard' ? ' active' : ''}`}
             onClick={() => setTab('dashboard')}
           >
@@ -91,6 +98,7 @@ export default function App() {
       <main className="main">
         {tab === 'raster' && <WeekGrid initialMonday={jumpWeek} />}
         {tab === 'projekte' && <Projects />}
+        {tab === 'neu' && <NewProjects />}
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'auswertung' && (
           <Analytics onOpenWeek={(d) => { setJumpWeek(d); setTab('raster') }} />

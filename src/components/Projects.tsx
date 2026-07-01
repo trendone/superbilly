@@ -10,6 +10,7 @@ import {
   type ProjectsView,
 } from '../lib/projects'
 import { workingDaysBetween } from '../lib/dates'
+import { KEYNOTE_KTR } from '../lib/analytics'
 import {
   createMilestone,
   deleteMilestone,
@@ -42,7 +43,8 @@ export default function Projects() {
   const [empFilter, setEmpFilter] = useState('alle')
   const [statusFilter, setStatusFilter] = useState('alle')
   const [originFilter, setOriginFilter] = useState('alle') // alle | kunde | intern
-  const [catFilter, setCatFilter] = useState('alle')
+  const [catFilter, setCatFilter] = useState('no-keynote') // Default: Keynotes ausgeblendet
+  const [newFilter, setNewFilter] = useState('alle') // alle | neu
 
   function load() {
     fetchProjectsView()
@@ -65,10 +67,13 @@ export default function Projects() {
       if (statusFilter !== 'alle' && p.status !== statusFilter) return false
       if (originFilter === 'kunde' && p.source !== 'zoho') return false
       if (originFilter === 'intern' && p.source === 'zoho') return false
-      if (catFilter !== 'alle' && p.categoryLabel !== catFilter) return false
+      if (newFilter === 'neu' && !p.is_new) return false
+      if (catFilter === 'no-keynote') {
+        if (p.categoryKtr && (KEYNOTE_KTR as readonly string[]).includes(p.categoryKtr)) return false
+      } else if (catFilter !== 'alle' && p.categoryLabel !== catFilter) return false
       return true
     })
-  }, [view, empFilter, statusFilter, originFilter, catFilter])
+  }, [view, empFilter, statusFilter, originFilter, catFilter, newFilter])
 
   if (selected) {
     return (
@@ -138,12 +143,24 @@ export default function Projects() {
               value={catFilter}
               onChange={(e) => setCatFilter(e.target.value)}
             >
+              <option value="no-keynote">Ohne Keynotes</option>
               <option value="alle">Alle</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            Neu{' '}
+            <select
+              className="field-inline"
+              value={newFilter}
+              onChange={(e) => setNewFilter(e.target.value)}
+            >
+              <option value="alle">Alle</option>
+              <option value="neu">Nur neue</option>
             </select>
           </label>
           <span className="dim">{filtered.length} Projekte</span>
@@ -163,6 +180,7 @@ export default function Projects() {
               <div className="proj-card-client">{p.client ?? 'Kein Kunde'}</div>
               <div className="proj-card-meta">
                 <span className={`status-pill st-${p.status}`}>{p.status}</span>
+                {p.is_new && <span className="proj-tag proj-tag-new">Neu</span>}
                 {p.source === 'zoho' ? (
                   <span className="proj-tag">Zoho</span>
                 ) : (
@@ -180,7 +198,7 @@ export default function Projects() {
   )
 }
 
-function ProjectDetailView({ projectId, onBack }: { projectId: string; onBack: () => void }) {
+export function ProjectDetailView({ projectId, onBack }: { projectId: string; onBack: () => void }) {
   const [detail, setDetail] = useState<ProjectDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)

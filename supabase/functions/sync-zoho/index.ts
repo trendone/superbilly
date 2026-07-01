@@ -41,6 +41,10 @@ interface ProjectRow {
   source: string;
 }
 
+interface ProjectUpsertRow extends ProjectRow {
+  is_new?: true;
+}
+
 async function getAccessToken(): Promise<string> {
   const body = new URLSearchParams({
     refresh_token: env("ZOHO_REFRESH_TOKEN"),
@@ -110,7 +114,7 @@ async function buildRows(token: string): Promise<ProjectRow[]> {
   return [...byExternal.values()];
 }
 
-async function upsertProjects(rows: ProjectRow[]): Promise<void> {
+async function upsertProjects(rows: ProjectUpsertRow[]): Promise<void> {
   if (rows.length === 0) return;
   const r = await fetch(`${env("SUPABASE_URL")}/rest/v1/projects?on_conflict=external_id`, {
     method: "POST",
@@ -125,27 +129,78 @@ async function upsertProjects(rows: ProjectRow[]): Promise<void> {
   if (!r.ok) throw new Error(`projects upsert ${r.status}: ${await r.text()}`);
 }
 
+/** external_ids, die schon in der DB stehen – trennt Insert (neu) von Update (bestehend). */
+async function fetchExistingExternalIds(): Promise<Set<string>> {
+  const r = await fetch(
+    `${env("SUPABASE_URL")}/rest/v1/projects?select=external_id&external_id=not.is.null`,
+    {
+      headers: {
+        apikey: env("SUPABASE_SERVICE_ROLE_KEY"),
+        Authorization: `Bearer ${env("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+    },
+  );
+  if (!r.ok) throw new Error(`fetch existing external_ids ${r.status}: ${await r.text()}`);
+  const data = (await r.json()) as { external_id: string }[];
+  return new Set(data.map((d) => d.external_id));
+}
+
+/** Manueller Trigger aus der App: gültige Session eines eingeloggten (@trendone.com) Users. */
+async function isAuthenticatedUser(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return false;
+  const r = await fetch(`${env("SUPABASE_URL")}/auth/v1/user`, {
+    headers: { Authorization: authHeader, apikey: env("SUPABASE_ANON_KEY") },
+  });
+  return r.ok;
+}
+
+// CORS: nötig, seit die App den Sync auch per Klick (Browser) auslösen kann
+// (zuvor nur Cron/Server-zu-Server, kein Preflight nötig).
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-sync-secret",
+};
+
 Deno.serve(async (req) => {
-  // Schutz: nur mit gültigem Sync-Secret (Cron/manuell). verify_jwt=false in config.toml.
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Schutz: gültiges Sync-Secret (Cron) ODER eingeloggter App-User (manueller Trigger).
+  // verify_jwt=false in config.toml, daher hier selbst geprüft.
   const secret = Deno.env.get("SYNC_SECRET");
-  if (secret && req.headers.get("x-sync-secret") !== secret) {
+  const bySecret = !!secret && req.headers.get("x-sync-secret") === secret;
+  if (!bySecret && !(await isAuthenticatedUser(req))) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
   try {
     const token = await getAccessToken();
     const rows = await buildRows(token);
-    await upsertProjects(rows);
-    return new Response(JSON.stringify({ ok: true, projects_upserted: rows.length }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    const existing = await fetchExistingExternalIds();
+    const newRows: ProjectUpsertRow[] = [];
+    const updateRows: ProjectUpsertRow[] = [];
+    for (const row of rows) {
+      if (existing.has(row.external_id)) updateRows.push(row);
+      else newRows.push({ ...row, is_new: true });
+    }
+    await upsertProjects(newRows);
+    await upsertProjects(updateRows);
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        projects_upserted: rows.length,
+        projects_new: newRows.length,
+        projects_updated: updateRows.length,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (e) {
     console.error(e);
     return new Response(JSON.stringify({ ok: false, error: String(e) }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

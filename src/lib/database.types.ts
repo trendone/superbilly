@@ -370,6 +370,7 @@ export type Database = {
           end_date: string | null
           external_id: string | null
           id: string
+          is_new: boolean
           is_system: boolean
           name: string
           offer_number: string | null
@@ -388,6 +389,7 @@ export type Database = {
           end_date?: string | null
           external_id?: string | null
           id?: string
+          is_new?: boolean
           is_system?: boolean
           name: string
           offer_number?: string | null
@@ -406,6 +408,7 @@ export type Database = {
           end_date?: string | null
           external_id?: string | null
           id?: string
+          is_new?: boolean
           is_system?: boolean
           name?: string
           offer_number?: string | null

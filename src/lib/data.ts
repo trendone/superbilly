@@ -56,6 +56,8 @@ export async function createBooking(input: BookingInput): Promise<Booking> {
     .select('*')
     .single()
   if (error) throw error
+  // Erste Buchung auf ein Projekt beendet dessen "neu"-Kennzeichnung (Pipeline-Bereich).
+  await supabase.from('projects').update({ is_new: false }).eq('id', input.project_id).eq('is_new', true)
   return data
 }
 

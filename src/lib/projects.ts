@@ -40,6 +40,7 @@ export interface ProjectRow extends Project {
   employeeIds: string[] // Mitarbeitende mit Buchung auf diesem Projekt
   categoryLabel: string | null // dominante Leistungskategorie (z. B. „Fokus Keynotes")
   categoryKtr: string | null
+  hasBookings: boolean // mind. eine Planungsbuchung vorhanden ("noch zu verplanen", wenn false)
 }
 
 export interface ProjectsView {
@@ -65,7 +66,9 @@ export async function fetchProjectsView(): Promise<ProjectsView> {
   if (emp.error) throw emp.error
 
   const empByProject = new Map<string, Set<string>>()
+  const bookedProjectIds = new Set<string>()
   for (const b of book) {
+    bookedProjectIds.add(b.project_id)
     if (!b.employee_id) continue
     const set = empByProject.get(b.project_id) ?? new Set<string>()
     set.add(b.employee_id)
@@ -90,6 +93,7 @@ export async function fetchProjectsView(): Promise<ProjectsView> {
       employeeIds: [...(empByProject.get(p.id) ?? [])],
       categoryLabel: cat?.label ?? null,
       categoryKtr: cat?.ktr ?? null,
+      hasBookings: bookedProjectIds.has(p.id),
     }
   })
 

@@ -474,6 +474,8 @@ code {
   color: #4338ca;
 }
 .proj-tag-intern { background: #f1f5f9; color: var(--muted); }
+.proj-tag-new { background: #dcfce7; color: #15803d; }
+.proj-tag-upcoming { background: #fef9c3; color: #a16207; }
 
 /* Status-Pill (geteilt: Projekt- und Rechnungsstatus) */
 .status-pill {
