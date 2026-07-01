@@ -154,7 +154,7 @@ function EmpRow({
   onEdit: () => void
   onTogglePeriods: () => void
   onDelete: () => void
-  onSaveEdit: (patch: { name: string; email: string | null; weekly_hours: number; active: boolean; department_id: string | null }) => Promise<void>
+  onSaveEdit: (patch: { name: string; email: string | null; weekly_hours: number; active: boolean; bookable: boolean; department_id: string | null }) => Promise<void>
   onAddPeriod: (from: string, hours: number) => Promise<void>
   onDeletePeriod: (id: string) => Promise<void>
   setError: (s: string | null) => void
@@ -189,7 +189,10 @@ function EmpRow({
         <td className="num">
           {e.weekly_hours} h{periods.length > 0 && <span title={`${periods.length} abweichende Periode(n)`}> 🕒</span>}
         </td>
-        <td>{e.active ? <span className="badge green">aktiv</span> : <span className="badge dim">inaktiv</span>}</td>
+        <td>
+          {e.active ? <span className="badge green">aktiv</span> : <span className="badge dim">inaktiv</span>}
+          {!e.bookable && <span className="badge dim" title="Nicht im Planungsraster/Auswertung"> nicht buchbar</span>}
+        </td>
         <td className="ms-row-actions">
           <button className="icon-btn" title="Bearbeiten" onClick={onEdit}>✎</button>
           <button className="icon-btn" title="Arbeitszeiten" onClick={onTogglePeriods}>🕒</button>
@@ -238,13 +241,14 @@ function EmployeeForm({
 }: {
   initial?: Employee
   departments: Department[]
-  onSave: (vals: { name: string; email: string | null; weekly_hours: number; active: boolean; department_id: string | null }) => Promise<void>
+  onSave: (vals: { name: string; email: string | null; weekly_hours: number; active: boolean; bookable: boolean; department_id: string | null }) => Promise<void>
   onCancel: () => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [email, setEmail] = useState(initial?.email ?? '')
   const [hours, setHours] = useState(initial?.weekly_hours != null ? String(initial.weekly_hours) : '40')
   const [active, setActive] = useState(initial?.active ?? true)
+  const [bookable, setBookable] = useState(initial?.bookable ?? true)
   const [deptId, setDeptId] = useState(initial?.department_id ?? '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -254,7 +258,7 @@ function EmployeeForm({
     if (!name.trim()) { setErr('Name ist Pflicht.'); return }
     setSaving(true); setErr(null)
     try {
-      await onSave({ name: name.trim(), email: email.trim() || null, weekly_hours: Number(hours.replace(',', '.')) || 0, active, department_id: deptId || null })
+      await onSave({ name: name.trim(), email: email.trim() || null, weekly_hours: Number(hours.replace(',', '.')) || 0, active, bookable, department_id: deptId || null })
     } catch (e) {
       setErr((e as Error).message); setSaving(false)
     }
@@ -276,6 +280,9 @@ function EmployeeForm({
         </label>
         <label className="admin-check">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> aktiv
+        </label>
+        <label className="admin-check" title="Erscheint nicht im Planungsraster und in der Auswertung (z. B. Geschäftsführung, Assistenz)">
+          <input type="checkbox" checked={!bookable} onChange={(e) => setBookable(!e.target.checked)} /> nicht buchbar
         </label>
       </div>
       {err && <div className="status err">✕ {err}</div>}

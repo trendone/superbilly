@@ -19,7 +19,7 @@ export async function fetchWeek(mondayISO: string, fridayISO: string): Promise<W
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
 
   const [emp, proj, book, dep] = await Promise.all([
-    supabase.from('employees').select('*').eq('active', true).order('name'),
+    supabase.from('employees').select('*').eq('active', true).eq('bookable', true).order('name'),
     supabase.from('projects').select('*'),
     supabase
       .from('bookings')

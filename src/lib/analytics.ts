@@ -58,7 +58,7 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
 
   const [emp, proj, book, periods, ms, act, pact, dep] = await Promise.all([
-    supabase.from('employees').select('*').eq('active', true).order('name'),
+    supabase.from('employees').select('*').eq('active', true).eq('bookable', true).order('name'),
     supabase.from('projects').select('*').order('name'),
     fetchAll<Booking>('bookings'),
     supabase.from('employee_hours_periods').select('*'),

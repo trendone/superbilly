@@ -204,6 +204,7 @@ export type Database = {
       employees: {
         Row: {
           active: boolean
+          bookable: boolean
           created_at: string
           department_id: string | null
           email: string | null
@@ -213,6 +214,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          bookable?: boolean
           created_at?: string
           department_id?: string | null
           email?: string | null
@@ -222,6 +224,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          bookable?: boolean
           created_at?: string
           department_id?: string | null
           email?: string | null
