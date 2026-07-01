@@ -924,6 +924,7 @@ code {
 /* ── Admin / Verwaltung ─────────────────────────────────────────── */
 .admin-h { font-size: 18px; margin: 0; }
 .admin-sec { font-size: 14px; margin: 0; }
+.admin-sub { font-size: 13px; margin: 14px 0 6px; color: var(--muted, #64748b); font-weight: 600; }
 .admin-check { display: flex; align-items: center; gap: 6px; flex-direction: row !important; }
 .admin-check input { width: auto; }
 .admin-periods { padding: 10px 4px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }

@@ -34,6 +34,31 @@ interface MilestoneRow {
   source: string;
 }
 
+interface UnmatchedRow {
+  source: string;
+  external_id: string;
+  label: string;
+  detail: string | null;
+  minutes: number | null;
+  amount_eur: number | null;
+}
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-sync-secret",
+};
+
+// Manueller Trigger aus dem Browser: gültiger App-User-JWT (verify_jwt=false).
+async function isAuthenticatedUser(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return false;
+  const r = await fetch(`${env("SUPABASE_URL")}/auth/v1/user`, {
+    headers: { Authorization: authHeader, apikey: env("SUPABASE_ANON_KEY") },
+  });
+  return r.ok;
+}
+
 // Produktname vereinheitlichen: " / "-Trenner, Mehrfach-Leerzeichen weg.
 // "Consulting/ Focus Keynote / 50200" → "Consulting / Focus Keynote / 50200".
 const normProduct = (v: unknown): string | null => {
@@ -83,7 +108,7 @@ async function sbGet(path: string): Promise<Record<string, unknown>[]> {
   return await r.json();
 }
 
-async function buildRows(token: string): Promise<{ rows: MilestoneRow[]; unmatched: number }> {
+async function buildRows(token: string): Promise<{ rows: MilestoneRow[]; unmatched: UnmatchedRow[] }> {
   const records = await coql(
     token,
     "select id, Beschreibung, Umsatz, Monat, Rechnungsdatum, Rechnung_gestellt, " +
@@ -96,12 +121,19 @@ async function buildRows(token: string): Promise<{ rows: MilestoneRow[]; unmatch
   for (const p of projects) byDeal.set(String(p.external_id), p.id as string);
 
   const rows: MilestoneRow[] = [];
-  let unmatched = 0;
+  const unmatched: UnmatchedRow[] = [];
   for (const a of records) {
     const dealId = lookupId(a.Verkaufschance);
     const projectId = dealId ? byDeal.get(dealId) : undefined;
     if (!projectId) {
-      unmatched++;
+      unmatched.push({
+        source: "zoho-abgrenzung",
+        external_id: String(a.id),
+        label: (a.Beschreibung as string) ?? "(ohne Beschreibung)",
+        detail: dealId, // Deal-ID (Verkaufschance), die kein Projekt trifft
+        minutes: null,
+        amount_eur: a.Umsatz != null ? Number(a.Umsatz) : null,
+      });
       continue;
     }
     const dueDate = (a.Rechnungsdatum as string) ?? (a.Monat as string) ?? null;
@@ -135,27 +167,61 @@ async function upsert(rows: MilestoneRow[]): Promise<void> {
   if (!r.ok) throw new Error(`milestones upsert ${r.status}: ${await r.text()}`);
 }
 
+// Nicht zuordenbare Abgrenzungen fürs Mapping-UI persistieren (informativ):
+// zoho-abgrenzung-Einträge komplett ersetzen (delete-all + insert).
+async function persistUnmatched(rows: UnmatchedRow[]): Promise<void> {
+  const del = await fetch(
+    `${env("SUPABASE_URL")}/rest/v1/sync_unmatched?source=eq.zoho-abgrenzung`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: env("SUPABASE_SERVICE_ROLE_KEY"),
+        Authorization: `Bearer ${env("SUPABASE_SERVICE_ROLE_KEY")}`,
+        Prefer: "return=minimal",
+      },
+    },
+  );
+  if (!del.ok) throw new Error(`sync_unmatched delete ${del.status}: ${await del.text()}`);
+  if (rows.length === 0) return;
+  const ins = await fetch(`${env("SUPABASE_URL")}/rest/v1/sync_unmatched`, {
+    method: "POST",
+    headers: {
+      apikey: env("SUPABASE_SERVICE_ROLE_KEY"),
+      Authorization: `Bearer ${env("SUPABASE_SERVICE_ROLE_KEY")}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(rows),
+  });
+  if (!ins.ok) throw new Error(`sync_unmatched insert ${ins.status}: ${await ins.text()}`);
+}
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Schutz: gültiges Sync-Secret (Cron) ODER eingeloggter App-User (manueller Trigger).
   const secret = Deno.env.get("SYNC_SECRET");
-  if (secret && req.headers.get("x-sync-secret") !== secret) {
+  const bySecret = !!secret && req.headers.get("x-sync-secret") === secret;
+  if (!bySecret && !(await isAuthenticatedUser(req))) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
   try {
     const token = await getAccessToken();
     const { rows, unmatched } = await buildRows(token);
     await upsert(rows);
+    await persistUnmatched(unmatched);
     return new Response(
-      JSON.stringify({ ok: true, milestones_upserted: rows.length, unmatched }),
-      { headers: { "Content-Type": "application/json" } },
+      JSON.stringify({ ok: true, milestones_upserted: rows.length, unmatched: unmatched.length }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
     console.error(e);
     return new Response(JSON.stringify({ ok: false, error: String(e) }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

@@ -36,6 +36,31 @@ interface ActualRow {
   revenue_eur: number | null;
 }
 
+interface UnmatchedRow {
+  source: string;
+  external_id: string;
+  label: string;
+  detail: string | null;
+  minutes: number | null;
+  amount_eur: number | null;
+}
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-sync-secret",
+};
+
+// Manueller Trigger aus dem Browser: gültiger App-User-JWT (verify_jwt=false).
+async function isAuthenticatedUser(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return false;
+  const r = await fetch(`${SB_URL()}/auth/v1/user`, {
+    headers: { Authorization: authHeader, apikey: env("SUPABASE_ANON_KEY") },
+  });
+  return r.ok;
+}
+
 async function miteReport(): Promise<Record<string, unknown>[]> {
   const url = `https://${MITE_ACCOUNT()}.mite.de/time_entries.json` +
     `?group_by=project,month,service&at=${PERIOD}&api_key=${MITE_KEY()}`;
@@ -62,7 +87,7 @@ const leadingOfferNo = (name: unknown): string | null => {
   return m ? m[1] : null;
 };
 
-async function buildRows(): Promise<{ rows: ActualRow[]; unmatched: string[] }> {
+async function buildRows(): Promise<{ rows: ActualRow[]; unmatched: UnmatchedRow[] }> {
   const groups = await miteReport();
 
   // Resolver-Quellen
@@ -79,14 +104,26 @@ async function buildRows(): Promise<{ rows: ActualRow[]; unmatched: string[] }> 
   // Aggregation über (project_id, period, service_code) – mehrere Mite-Projekte
   // können auf dasselbe Projekt zeigen.
   const agg = new Map<string, ActualRow>();
-  const unmatched = new Set<string>();
+  const unmatched = new Map<string, UnmatchedRow>();
 
   for (const e of groups) {
     const miteId = String(e.project_id);
     const projectId = overrideMap.get(miteId) ??
       numToProject.get(leadingOfferNo(e.project_name) ?? "");
     if (!projectId) {
-      unmatched.add(`${miteId} | ${String(e.project_name).trim()}`);
+      const mins = Number(e.minutes ?? 0);
+      const prev = unmatched.get(miteId);
+      if (prev) prev.minutes = (prev.minutes ?? 0) + mins;
+      else {
+        unmatched.set(miteId, {
+          source: "mite",
+          external_id: miteId,
+          label: String(e.project_name ?? "").trim(),
+          detail: null,
+          minutes: mins,
+          amount_eur: null,
+        });
+      }
       continue;
     }
     const period = `${String(e.month).slice(0, 4)}-${String(e.month).slice(4, 6)}-01`;
@@ -111,7 +148,33 @@ async function buildRows(): Promise<{ rows: ActualRow[]; unmatched: string[] }> 
       });
     }
   }
-  return { rows: [...agg.values()], unmatched: [...unmatched] };
+  return { rows: [...agg.values()], unmatched: [...unmatched.values()] };
+}
+
+// Nicht zuordenbare Mite-Projekte fürs Mapping-UI persistieren: mite-Einträge
+// komplett ersetzen (delete-all + insert), damit gelöste Fälle verschwinden.
+async function persistUnmatched(rows: UnmatchedRow[]): Promise<void> {
+  const del = await fetch(`${SB_URL()}/rest/v1/sync_unmatched?source=eq.mite`, {
+    method: "DELETE",
+    headers: {
+      apikey: SB_KEY(),
+      Authorization: `Bearer ${SB_KEY()}`,
+      Prefer: "return=minimal",
+    },
+  });
+  if (!del.ok) throw new Error(`sync_unmatched delete ${del.status}: ${await del.text()}`);
+  if (rows.length === 0) return;
+  const ins = await fetch(`${SB_URL()}/rest/v1/sync_unmatched`, {
+    method: "POST",
+    headers: {
+      apikey: SB_KEY(),
+      Authorization: `Bearer ${SB_KEY()}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(rows),
+  });
+  if (!ins.ok) throw new Error(`sync_unmatched insert ${ins.status}: ${await ins.text()}`);
 }
 
 async function upsert(rows: ActualRow[]): Promise<void> {
@@ -133,25 +196,30 @@ async function upsert(rows: ActualRow[]): Promise<void> {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Schutz: gültiges Sync-Secret (Cron) ODER eingeloggter App-User (manueller Trigger).
   const secret = Deno.env.get("SYNC_SECRET");
-  if (secret && req.headers.get("x-sync-secret") !== secret) {
+  const bySecret = !!secret && req.headers.get("x-sync-secret") === secret;
+  if (!bySecret && !(await isAuthenticatedUser(req))) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
   try {
     const { rows, unmatched } = await buildRows();
     await upsert(rows);
+    await persistUnmatched(unmatched);
     return new Response(
       JSON.stringify({ ok: true, period: PERIOD, actuals_upserted: rows.length, unmatched }),
-      { headers: { "Content-Type": "application/json" } },
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
     console.error(e);
     return new Response(JSON.stringify({ ok: false, error: String(e) }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

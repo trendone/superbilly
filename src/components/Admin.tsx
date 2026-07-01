@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  assignMiteOverride,
+  fetchMapping,
+  ignoreUnmatched,
+  removeOverride,
+  triggerMiteSync,
+  type MappingData,
+  type ProjectOption,
+  type UnmatchedRow,
+} from '../lib/mapping'
+import {
   addPeriod,
   createDepartment,
   createEmployee,
@@ -47,6 +57,7 @@ export default function Admin({ currentEmail }: { currentEmail: string }) {
         <>
           <EmployeesSection data={data} reload={load} setError={setError} />
           <RolesSection data={data} reload={load} setError={setError} currentEmail={currentEmail} />
+          <MappingSection />
           <DepartmentsSection data={data} reload={load} setError={setError} />
           <CategoriesSection data={data} reload={load} />
         </>
@@ -393,6 +404,199 @@ function RolesSection({
         </table>
       </div>
     </section>
+  )
+}
+
+// ── Zuordnungen (Mite/Zoho unmatched) ────────────────────────────────────────
+
+function minutesToHours(min: number | null): string {
+  if (!min) return '–'
+  return `${Math.round((min / 60) * 10) / 10} h`
+}
+
+function MappingSection() {
+  const [data, setData] = useState<MappingData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [info, setInfo] = useState<string | null>(null)
+
+  function load() {
+    return fetchMapping()
+      .then(setData)
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    load()
+  }, [])
+
+  async function onSync() {
+    setSyncing(true); setError(null); setInfo(null)
+    try {
+      const r = await triggerMiteSync()
+      setInfo(`Mite abgerufen: ${r.actuals_upserted ?? 0} Ist-Zeilen aktualisiert.`)
+      await load()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const miteOverrides = useMemo(
+    () => (data?.overrides ?? []).filter((o) => o.source === 'mite'),
+    [data?.overrides],
+  )
+
+  return (
+    <section className="ana-section">
+      <div className="ana-toolbar">
+        <h3 className="admin-sec">Zuordnungen</h3>
+        <button className="btn-primary" onClick={onSync} disabled={syncing}>
+          {syncing ? '… Mite läuft' : '⟳ Mite neu abrufen'}
+        </button>
+      </div>
+      <p className="hint">
+        Sync-Einträge ohne Projekt-Treffer. Mite-Projekte lassen sich hier manuell einem Projekt
+        zuordnen (greift beim nächsten Abruf). Zoho-Abgrenzungen sind informativ – der zugehörige
+        Deal muss in Zoho synchronisiert werden.
+      </p>
+      {error && <div className="status err">✕ {error}</div>}
+      {info && <div className="status ok">✓ {info}</div>}
+      {loading && <div className="status pending">… lädt</div>}
+
+      {data && (
+        <>
+          {/* ── Mite: zuordenbar ── */}
+          <h4 className="admin-sub">Mite ohne Zuordnung ({data.miteUnmatched.length})</h4>
+          {data.miteUnmatched.length === 0 ? (
+            <p className="dim">Alle Mite-Projekte sind zugeordnet.</p>
+          ) : (
+            <div className="table-scroll">
+              <table className="ana-table">
+                <thead>
+                  <tr>
+                    <th>Mite-Projekt</th>
+                    <th className="num">Ist</th>
+                    <th>Projekt zuordnen</th>
+                    <th>Aktion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.miteUnmatched.map((u) => (
+                    <MiteUnmatchedRow
+                      key={u.external_id}
+                      row={u}
+                      projects={data.projects}
+                      onAssign={async (projectId) => { await assignMiteOverride(u.external_id, projectId); await load() }}
+                      onIgnore={async () => { await ignoreUnmatched('mite', u.external_id); await load() }}
+                      setError={setError}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── Mite: bestehende Ausnahmen ── */}
+          {miteOverrides.length > 0 && (
+            <>
+              <h4 className="admin-sub">Bestätigte Mite-Zuordnungen ({miteOverrides.length})</h4>
+              <div className="admin-cat-list">
+                {miteOverrides.map((o) => (
+                  <div key={o.external_id} className="admin-cat-row">
+                    <span className="dim">Mite #{o.external_id}</span>
+                    <span className="admin-cat-name">→ {o.project_name}</span>
+                    <button
+                      className="icon-btn"
+                      title="Zuordnung entfernen"
+                      onClick={async () => {
+                        try { await removeOverride('mite', o.external_id); await load() }
+                        catch (e) { setError((e as Error).message) }
+                      }}
+                    >🗑</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* ── Zoho-Abgrenzungen: informativ (read-only) ── */}
+          <h4 className="admin-sub">Zoho-Abgrenzungen ohne Projekt ({data.zohoCount})</h4>
+          {data.zohoCount === 0 ? (
+            <p className="dim">Alle Abgrenzungen sind einem Projekt zugeordnet.</p>
+          ) : (
+            <>
+              <p className="hint">
+                Rechnungs-Splits, deren Deal nicht in der App liegt (außerhalb des synchronisierten
+                Bereichs). Nicht direkt zuordenbar – der Fix ist, den Deal in Zoho zu synchronisieren.
+                {data.zohoCount > data.zohoUnmatched.length && ` Zeigt die größten ${data.zohoUnmatched.length} nach Umsatz.`}
+              </p>
+              <div className="table-scroll">
+                <table className="ana-table">
+                  <thead>
+                    <tr>
+                      <th>Abgrenzung</th>
+                      <th className="num">Umsatz</th>
+                      <th>Deal-ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.zohoUnmatched.map((u) => (
+                      <tr key={u.external_id}>
+                        <td>{u.label ?? '–'}</td>
+                        <td className="num">{u.amount_eur != null ? `${u.amount_eur.toLocaleString('de-DE')} €` : '–'}</td>
+                        <td className="dim">{u.detail ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+function MiteUnmatchedRow({
+  row, projects, onAssign, onIgnore, setError,
+}: {
+  row: UnmatchedRow
+  projects: ProjectOption[]
+  onAssign: (projectId: string) => Promise<void>
+  onIgnore: () => Promise<void>
+  setError: (s: string | null) => void
+}) {
+  const [sel, setSel] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true); setError(null)
+    try { await fn() } catch (e) { setError((e as Error).message); setBusy(false) }
+  }
+
+  return (
+    <tr>
+      <td>{row.label || `Mite #${row.external_id}`}</td>
+      <td className="num">{minutesToHours(row.minutes)}</td>
+      <td>
+        <select value={sel} onChange={(e) => setSel(e.target.value)} disabled={busy}>
+          <option value="">— Projekt wählen —</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.offer_number ? ` · A - ${p.offer_number}` : ''}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td className="ms-row-actions">
+        <button className="btn-primary" disabled={!sel || busy} onClick={() => run(() => onAssign(sel))}>Zuordnen</button>
+        <button className="btn-ghost" disabled={busy} onClick={() => run(onIgnore)}>Ignorieren</button>
+      </td>
+    </tr>
   )
 }
 

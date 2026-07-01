@@ -422,6 +422,36 @@ export type Database = {
         }
         Relationships: []
       }
+      sync_unmatched: {
+        Row: {
+          amount_eur: number | null
+          detail: string | null
+          external_id: string
+          label: string | null
+          last_synced_at: string
+          minutes: number | null
+          source: string
+        }
+        Insert: {
+          amount_eur?: number | null
+          detail?: string | null
+          external_id: string
+          label?: string | null
+          last_synced_at?: string
+          minutes?: number | null
+          source: string
+        }
+        Update: {
+          amount_eur?: number | null
+          detail?: string | null
+          external_id?: string
+          label?: string | null
+          last_synced_at?: string
+          minutes?: number | null
+          source?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
