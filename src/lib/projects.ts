@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import type { Database } from './database.types'
 import type { Milestone } from './milestones'
-import { parseProduct } from './analytics'
+import { fetchAll, parseProduct } from './analytics'
 
 export type Project = Database['public']['Tables']['projects']['Row']
 export type ProjectUpdate = Database['public']['Tables']['projects']['Update']
@@ -56,17 +56,16 @@ export async function fetchProjectsView(): Promise<ProjectsView> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
   const [proj, book, ms, emp] = await Promise.all([
     supabase.from('projects').select('*').eq('is_system', false).order('name'),
-    supabase.from('bookings').select('project_id, employee_id'),
+    fetchAll<{ project_id: string; employee_id: string | null }>('bookings', 'project_id, employee_id'),
     supabase.from('milestones').select('project_id, product'),
     supabase.from('employees').select('id, name').order('name'),
   ])
   if (proj.error) throw proj.error
-  if (book.error) throw book.error
   if (ms.error) throw ms.error
   if (emp.error) throw emp.error
 
   const empByProject = new Map<string, Set<string>>()
-  for (const b of book.data) {
+  for (const b of book) {
     if (!b.employee_id) continue
     const set = empByProject.get(b.project_id) ?? new Set<string>()
     set.add(b.employee_id)

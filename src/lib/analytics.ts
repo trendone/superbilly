@@ -41,11 +41,11 @@ export interface AnalyticsData {
 // das überschreiten können (bookings), seitenweise nachladen, sonst fehlen Daten
 // in der Auswertung (z. B. Mitarbeiter mit 0 %, obwohl verplant).
 const PAGE = 1000
-async function fetchAll<T>(table: 'bookings'): Promise<T[]> {
+export async function fetchAll<T>(table: 'bookings', columns = '*'): Promise<T[]> {
   const s = supabase!
   const out: T[] = []
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await s.from(table).select('*').range(from, from + PAGE - 1)
+    const { data, error } = await s.from(table).select(columns).range(from, from + PAGE - 1)
     if (error) throw error
     out.push(...(data as T[]))
     if (data.length < PAGE) break
