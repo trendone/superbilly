@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  deleteProject,
   fetchProjectDetail,
   fetchProjectsView,
   PROJECT_STATES,
@@ -244,6 +245,22 @@ function ProjectDetailView({ projectId, onBack }: { projectId: string; onBack: (
     }
   }
 
+  async function onProjectDelete() {
+    if (!detail) return
+    if (
+      !confirm(
+        `Projekt „${detail.project.name}" wirklich löschen? Alle Buchungen und Meilensteine dieses Projekts werden ebenfalls gelöscht.`,
+      )
+    )
+      return
+    try {
+      await deleteProject(detail.project.id)
+      onBack()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
   if (error) return <div className="dash"><div className="status err">✕ {error}</div></div>
   if (!detail) return <div className="dash"><div className="status pending">… lädt</div></div>
 
@@ -284,9 +301,16 @@ function ProjectDetailView({ projectId, onBack }: { projectId: string; onBack: (
         <button className="btn-ghost back-btn" onClick={onBack}>
           ← Alle Projekte
         </button>
-        <button className="btn-primary" onClick={() => setEditing(true)}>
-          ✎ Projekt bearbeiten
-        </button>
+        <div className="detail-top-actions">
+          <button className="btn-primary" onClick={() => setEditing(true)}>
+            ✎ Projekt bearbeiten
+          </button>
+          {p.source !== 'zoho' && (
+            <button className="icon-btn-danger" title="Projekt löschen" onClick={onProjectDelete}>
+              🗑
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="proj-head">

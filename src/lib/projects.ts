@@ -136,3 +136,10 @@ export async function updateProject(id: string, patch: ProjectUpdate): Promise<P
   if (error) throw error
   return data
 }
+
+/** Löscht ein Projekt samt Buchungen/Meilensteinen (on delete cascade). Nur für Nicht-Zoho-Projekte gedacht. */
+export async function deleteProject(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { error } = await supabase.from('projects').delete().eq('id', id)
+  if (error) throw error
+}

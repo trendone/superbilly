@@ -496,6 +496,10 @@ code {
 
 .detail-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .back-btn { align-self: flex-start; }
+.detail-top-actions { display: flex; align-items: center; gap: 8px; }
+.detail-top-actions .btn-primary { width: auto; margin-top: 0; }
+.icon-btn-danger { border: 1px solid var(--border); background: var(--card); font-size: 16px; padding: 6px 10px; border-radius: 8px; }
+.icon-btn-danger:hover { background: #fff5f5; color: var(--red); border-color: #fecaca; }
 
 .proj-head { display: flex; gap: 12px; align-items: stretch; margin-bottom: 18px; }
 .proj-head-bar { width: 6px; border-radius: 3px; }
