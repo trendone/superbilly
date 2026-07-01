@@ -70,6 +70,8 @@ export default function Projects() {
       if (newFilter === 'neu' && !p.is_new) return false
       if (catFilter === 'no-keynote') {
         if (p.categoryKtr && (KEYNOTE_KTR as readonly string[]).includes(p.categoryKtr)) return false
+      } else if (catFilter === 'intern') {
+        if (p.source === 'zoho') return false
       } else if (catFilter !== 'alle' && p.categoryLabel !== catFilter) return false
       return true
     })
@@ -117,11 +119,8 @@ export default function Projects() {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="alle">Alle</option>
-              {PROJECT_STATES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
+              <option value="aktiv">aktiv</option>
+              <option value="abgeschlossen">abgeschlossen</option>
             </select>
           </label>
           <label>
@@ -145,6 +144,7 @@ export default function Projects() {
             >
               <option value="no-keynote">Ohne Keynotes</option>
               <option value="alle">Alle</option>
+              <option value="intern">Intern</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}

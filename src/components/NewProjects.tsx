@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchProjectsView, PROJECT_STATES, type ProjectsView } from '../lib/projects'
+import { fetchProjectsView, type ProjectsView } from '../lib/projects'
 import { KEYNOTE_KTR } from '../lib/analytics'
 import { triggerZohoSync, type ZohoSyncResult } from '../lib/zoho'
 import { ProjectDetailView } from './Projects'
@@ -62,6 +62,8 @@ export default function NewProjects() {
       if (originFilter === 'intern' && p.source === 'zoho') return false
       if (catFilter === 'no-keynote') {
         if (p.categoryKtr && (KEYNOTE_KTR as readonly string[]).includes(p.categoryKtr)) return false
+      } else if (catFilter === 'intern') {
+        if (p.source === 'zoho') return false
       } else if (catFilter !== 'alle' && p.categoryLabel !== catFilter) return false
       return true
     })
@@ -127,11 +129,8 @@ export default function NewProjects() {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="alle">Alle</option>
-              {PROJECT_STATES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
+              <option value="aktiv">aktiv</option>
+              <option value="abgeschlossen">abgeschlossen</option>
             </select>
           </label>
           <label>
@@ -155,6 +154,7 @@ export default function NewProjects() {
             >
               <option value="no-keynote">Ohne Keynotes</option>
               <option value="alle">Alle</option>
+              <option value="intern">Intern</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -181,11 +181,7 @@ export default function NewProjects() {
               <div className="proj-card-client">{p.client ?? 'Kein Kunde'}</div>
               <div className="proj-card-meta">
                 <span className={`status-pill st-${p.status}`}>{p.status}</span>
-                {p.is_new ? (
-                  <span className="proj-tag proj-tag-new">Neu</span>
-                ) : (
-                  <span className="proj-tag proj-tag-upcoming">Kommend</span>
-                )}
+                {p.is_new && <span className="proj-tag proj-tag-new">Neu</span>}
                 {p.source === 'zoho' ? (
                   <span className="proj-tag">Zoho</span>
                 ) : (
