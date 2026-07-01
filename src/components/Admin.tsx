@@ -458,9 +458,8 @@ function MappingSection() {
         </button>
       </div>
       <p className="hint">
-        Sync-Einträge ohne Projekt-Treffer. Mite-Projekte lassen sich hier manuell einem Projekt
-        zuordnen (greift beim nächsten Abruf). Zoho-Abgrenzungen sind informativ – der zugehörige
-        Deal muss in Zoho synchronisiert werden.
+        Mite-Projekte ohne Projekt-Treffer lassen sich hier manuell einem Projekt zuordnen
+        (greift beim nächsten Abruf).
       </p>
       {error && <div className="status err">✕ {error}</div>}
       {info && <div className="status ok">✓ {info}</div>}
@@ -522,39 +521,6 @@ function MappingSection() {
             </>
           )}
 
-          {/* ── Zoho-Abgrenzungen: informativ (read-only) ── */}
-          <h4 className="admin-sub">Zoho-Abgrenzungen ohne Projekt ({data.zohoCount})</h4>
-          {data.zohoCount === 0 ? (
-            <p className="dim">Alle Abgrenzungen sind einem Projekt zugeordnet.</p>
-          ) : (
-            <>
-              <p className="hint">
-                Rechnungs-Splits, deren Deal nicht in der App liegt (außerhalb des synchronisierten
-                Bereichs). Nicht direkt zuordenbar – der Fix ist, den Deal in Zoho zu synchronisieren.
-                {data.zohoCount > data.zohoUnmatched.length && ` Zeigt die größten ${data.zohoUnmatched.length} nach Umsatz.`}
-              </p>
-              <div className="table-scroll">
-                <table className="ana-table">
-                  <thead>
-                    <tr>
-                      <th>Abgrenzung</th>
-                      <th className="num">Umsatz</th>
-                      <th>Deal-ID</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.zohoUnmatched.map((u) => (
-                      <tr key={u.external_id}>
-                        <td>{u.label ?? '–'}</td>
-                        <td className="num">{u.amount_eur != null ? `${u.amount_eur.toLocaleString('de-DE')} €` : '–'}</td>
-                        <td className="dim">{u.detail ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
         </>
       )}
     </section>

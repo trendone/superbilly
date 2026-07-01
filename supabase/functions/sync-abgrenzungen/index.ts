@@ -167,35 +167,6 @@ async function upsert(rows: MilestoneRow[]): Promise<void> {
   if (!r.ok) throw new Error(`milestones upsert ${r.status}: ${await r.text()}`);
 }
 
-// Nicht zuordenbare Abgrenzungen fürs Mapping-UI persistieren (informativ):
-// zoho-abgrenzung-Einträge komplett ersetzen (delete-all + insert).
-async function persistUnmatched(rows: UnmatchedRow[]): Promise<void> {
-  const del = await fetch(
-    `${env("SUPABASE_URL")}/rest/v1/sync_unmatched?source=eq.zoho-abgrenzung`,
-    {
-      method: "DELETE",
-      headers: {
-        apikey: env("SUPABASE_SERVICE_ROLE_KEY"),
-        Authorization: `Bearer ${env("SUPABASE_SERVICE_ROLE_KEY")}`,
-        Prefer: "return=minimal",
-      },
-    },
-  );
-  if (!del.ok) throw new Error(`sync_unmatched delete ${del.status}: ${await del.text()}`);
-  if (rows.length === 0) return;
-  const ins = await fetch(`${env("SUPABASE_URL")}/rest/v1/sync_unmatched`, {
-    method: "POST",
-    headers: {
-      apikey: env("SUPABASE_SERVICE_ROLE_KEY"),
-      Authorization: `Bearer ${env("SUPABASE_SERVICE_ROLE_KEY")}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify(rows),
-  });
-  if (!ins.ok) throw new Error(`sync_unmatched insert ${ins.status}: ${await ins.text()}`);
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -212,7 +183,6 @@ Deno.serve(async (req) => {
     const token = await getAccessToken();
     const { rows, unmatched } = await buildRows(token);
     await upsert(rows);
-    await persistUnmatched(unmatched);
     return new Response(
       JSON.stringify({ ok: true, milestones_upserted: rows.length, unmatched: unmatched.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

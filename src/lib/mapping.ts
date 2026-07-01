@@ -21,14 +21,8 @@ export interface ProjectOption {
   client: string | null
 }
 
-// Zoho-Abgrenzungen ohne Projekt sind oft sehr viele (Rechnungs-Splits außerhalb
-// des synchronisierten Deal-Bereichs) → nur die größten N als Signal anzeigen.
-export const ZOHO_SAMPLE_LIMIT = 50
-
 export interface MappingData {
   miteUnmatched: UnmatchedRow[]
-  zohoUnmatched: UnmatchedRow[] // größte ZOHO_SAMPLE_LIMIT nach Umsatz
-  zohoCount: number // Gesamtzahl unmatched Abgrenzungen
   overrides: OverrideRow[]
   projects: ProjectOption[]
 }
@@ -40,17 +34,12 @@ function sb() {
 
 export async function fetchMapping(): Promise<MappingData> {
   const s = sb()
-  // Getrennt je Quelle abfragen: Zoho kann >1000 Zeilen haben (PostgREST-Cap).
-  const [mite, zohoHead, zohoSample, ov, proj] = await Promise.all([
+  const [mite, ov, proj] = await Promise.all([
     s.from('sync_unmatched').select('*').eq('source', 'mite').order('label'),
-    s.from('sync_unmatched').select('external_id', { count: 'exact', head: true }).eq('source', 'zoho-abgrenzung'),
-    s.from('sync_unmatched').select('*').eq('source', 'zoho-abgrenzung').order('amount_eur', { ascending: false, nullsFirst: false }).limit(ZOHO_SAMPLE_LIMIT),
     s.from('project_external_map').select('source, external_id, project_id, note').order('external_id'),
     s.from('projects').select('id, name, offer_number, client').eq('is_system', false).order('name'),
   ])
   if (mite.error) throw mite.error
-  if (zohoHead.error) throw zohoHead.error
-  if (zohoSample.error) throw zohoSample.error
   if (ov.error) throw ov.error
   if (proj.error) throw proj.error
 
@@ -66,8 +55,6 @@ export async function fetchMapping(): Promise<MappingData> {
 
   return {
     miteUnmatched: mite.data,
-    zohoUnmatched: zohoSample.data,
-    zohoCount: zohoHead.count ?? 0,
     overrides,
     projects,
   }
