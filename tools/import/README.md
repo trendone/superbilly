@@ -13,7 +13,7 @@ Die Analyse-Schritte (A–D) sind **Dry-Run** (lesen nur). Nur `import-to-db.mjs
 
 ```
 BILLY LIST ….xlsx
-   │  gen_import.py        (im Repo ../ressourcenplanung/tools)
+   │  gen_import.py        (tools/import/gen_import.py)
    ▼
 import-data.js            {employees, projects, tasks}  – deterministischer Excel-Export
    │                       ┌─ analyze.mjs   → reports/report.md       (Validierung Mitarbeiter/Projekte)
@@ -21,14 +21,14 @@ import-data.js            {employees, projects, tasks}  – deterministischer Ex
    │                       └─ match-zoho.mjs → reports/match-zoho.md   (lesbarer Report)
    │  zoho-projects.json                      reports/match-map.json   (maschinenlesbare Zuordnung)
    ▲
-   │  export-zoho.sh        (SELECT auf Supabase: projects mit external_id)
+   │  export-zoho.sh        (SELECT auf Supabase: projects mit source='zoho')
 projects (Supabase)  ←  sync-zoho Edge Function  ←  Zoho CRM
 ```
 
-> **Excel-Quelle:** Stand jetzt liefert die alte `../ressourcenplanung/import-data.js`
-> die Excel-Daten (deterministisch aus der xlsx gebaut). Sie ist der **Proxy** für die
-> Excel — Projekt-/Mitarbeiter-/Buchungsnamen sind identisch. Bei neueren Daten einfach
-> `gen_import.py` mit der neuen xlsx neu laufen lassen (Schritt A).
+> **Self-contained:** die gesamte Pipeline liegt in `tools/import/`. `gen_import.py` liest die
+> xlsx (Default `~/Downloads/BILLY LIST 2016-2023.xlsx`, überschreibbar per `$BILLY_XLSX` oder
+> als Argument an `sync.sh`) und schreibt `tools/import/import-data.js`. `import-data.js` und
+> `zoho-projects.json` sind **generierte Artefakte** (gitignored, bei jedem Lauf neu).
 
 ---
 
@@ -36,7 +36,8 @@ projects (Supabase)  ←  sync-zoho Edge Function  ←  Zoho CRM
 
 | Datei | Zweck |
 |---|---|
-| `../ressourcenplanung/tools/gen_import.py` | baut `import-data.js` aus der xlsx (deterministisch) |
+| `gen_import.py` | baut `import-data.js` aus der xlsx (deterministisch); überspringt Nachbarmonats-Übertragstage |
+| `sync.sh` | **Ein-Befehl-Pipeline** (alle 5 Schritte, fragt vor dem Schreiben nach) |
 | `analyze.mjs` | Validierung: Mitarbeiter-Hinweise, Projekt-Dedup, Sonderfälle → `reports/report.md` |
 | `export-zoho.sh` | exportiert Zoho-Projekte aus Supabase → `zoho-projects.json` |
 | `match-zoho.mjs` | matcht Excel-Projekte ↔ Zoho-Deals → `reports/match-zoho.md` + `reports/match-map.json` |
@@ -51,28 +52,34 @@ Secrets (DB-Zugang) liegen in `../.secrets` (`SUPABASE_DB_URL`); nicht committen
 
 ---
 
-## 3. Komplettlauf (auch für neuere Daten)
+## 3. Komplettlauf
+
+**Empfohlen – ein Befehl** (bündelt A–E, fragt vor dem Schreiben nach, siehe [§8](#8-ein-befehl-syncsh)):
 
 ```bash
-# A) Excel → import-data.js  (nur nötig, wenn eine NEUE xlsx vorliegt)
-cd ../ressourcenplanung
-BILLY_XLSX="/Pfad/zur/BILLY LIST ….xlsx" python3 tools/gen_import.py
-cd ../superbilly
+bash tools/import/sync.sh "/Pfad/zur/BILLY LIST ….xlsx"
+```
 
-# B) Zoho-Projekte aus Supabase ziehen (sync-zoho hält projects aktuell)
+**Manuell / einzeln** (falls man Schritte getrennt fahren will):
+
+```bash
+# A) Excel → import-data.js  (Default-xlsx, oder $BILLY_XLSX setzen)
+BILLY_XLSX="/Pfad/zur/BILLY LIST ….xlsx" python3 tools/import/gen_import.py
+
+# B) Zoho-Deals (source='zoho') aus Supabase ziehen
 bash tools/import/export-zoho.sh
 
-# C) Validierung (Mitarbeiter/Projekte) – optional, aber empfohlen
+# C) Validierung (Mitarbeiter/Projekte) – optional
 node tools/import/analyze.mjs
 
-# D) Zoho-Matching
+# D) Zoho-Matching (+ overrides.json)
 node tools/import/match-zoho.mjs
 
-# E) Import nach Supabase  (erst Migration einspielen, dann anwenden)
+# E) Import nach Supabase  (Migration einmalig; dann Trockenlauf, dann anwenden)
 psql "$SUPABASE_DB_URL" -f supabase/migrations/20260629190000_excel_import.sql   # einmalig
 set -a; . ./.secrets; set +a
-node tools/import/import-to-db.mjs            # nur SQL schreiben -> reports/import.sql (review)
-node tools/import/import-to-db.mjs --apply    # SQL schreiben UND anwenden
+node tools/import/import-to-db.mjs --prune            # nur SQL schreiben (review)
+node tools/import/import-to-db.mjs --prune --apply    # SQL schreiben UND anwenden
 ```
 
 Ergebnis: `reports/match-zoho.md` (lesen), `reports/match-map.json` (Import-Input),
@@ -225,3 +232,25 @@ anzufassen. `match-zoho.mjs` liest `tools/import/overrides.json` und wendet sie 
 
 Ablauf: Zeile in `overrides.json` eintragen → `node tools/import/match-zoho.mjs` → im Report prüfen
 → `node tools/import/import-to-db.mjs --prune --apply`.
+
+---
+
+## 8. Ein-Befehl: `sync.sh`
+
+Bündelt die ganze Pipeline (A–E) in einen Aufruf, lädt `.secrets` selbst, zeigt vor dem Schreiben
+eine Zusammenfassung und **fragt nach**, bevor etwas in die DB geht.
+
+```bash
+bash tools/import/sync.sh "/Pfad/zur/BILLY LIST ….xlsx"   # interaktiv (empfohlen)
+bash tools/import/sync.sh --dry-run "…xlsx"               # bei Schritt 4 stoppen (schreibt NIE)
+bash tools/import/sync.sh --yes "…xlsx"                   # ohne Rückfrage anwenden (Automation)
+```
+
+Ohne xlsx-Argument nutzt es die Default-Datei (`~/Downloads/BILLY LIST 2016-2023.xlsx`).
+Der Zoho-Pull fällt bei Netzfehler auf den vorhandenen `zoho-projects.json`-Snapshot zurück.
+Der Import schreibt **direkt in die Supabase-Cloud-DB** (kein Git/Deploy nötig – die App zeigt die
+Daten sofort). `--prune` ist dabei aktiv (spiegelt den xlsx-Stand exakt, siehe [§6](#6-echter-import--delta)).
+
+> **macOS-Hinweis:** Liegt die xlsx in `Downloads`/`Desktop`/`Dokumente` und das Terminal hat keine
+> Datenschutz-Freigabe, scheitert der Parser mit `Operation not permitted`. Dann entweder dem Terminal
+> **Festplattenvollzugriff** geben oder die Datei in einen ungeschützten Ordner legen (z. B. `~/billy-import/`).

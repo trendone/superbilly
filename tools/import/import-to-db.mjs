@@ -32,8 +32,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const repoRoot = resolve(__dirname, '../..')
-const excelSrc = resolve(repoRoot, '../ressourcenplanung/import-data.js')
+const excelSrc = resolve(__dirname, 'import-data.js')
 const mapSrc = resolve(__dirname, 'reports/match-map.json')
 const sqlOut = resolve(__dirname, 'reports/import.sql')
 const apply = process.argv.includes('--apply')

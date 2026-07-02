@@ -6,7 +6,7 @@
 // und Müll-Erkennung. SCHREIBT NICHTS – nur Analyse zur Freigabe.
 //
 // Aufruf:  node tools/import/analyze.mjs [pfad/zur/quelle.js]
-// Default: ../ressourcenplanung/import-data.js (relativ zum Repo-Root)
+// Default: tools/import/import-data.js (von gen_import.py erzeugt)
 // ============================================================
 
 import { writeFileSync, mkdirSync } from 'node:fs'
@@ -14,8 +14,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const repoRoot = resolve(__dirname, '../..')
-const srcArg = process.argv[2] ?? resolve(repoRoot, '../ressourcenplanung/import-data.js')
+const srcArg = process.argv[2] ?? resolve(__dirname, 'import-data.js')
 const reportsDir = resolve(__dirname, 'reports')
 
 // ---------- Helpers ----------

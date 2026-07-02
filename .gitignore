@@ -26,3 +26,6 @@ npm-debug.log*
 .vscode/
 .idea/
 tools/import/reports/
+# Generierte Import-Artefakte (gen_import.py / export-zoho.sh) – bei jedem Lauf neu
+tools/import/import-data.js
+tools/import/zoho-projects.json

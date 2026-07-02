@@ -34,7 +34,6 @@ done
 # ---- Pfade relativ zum Skript auflösen (egal aus welchem Ordner gestartet) ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUPERBILLY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-RESSOURCE="$(cd "$SUPERBILLY/.." && pwd)/ressourcenplanung"
 SECRETS="$SUPERBILLY/.secrets"
 
 step() { printf '\n\033[1;36m▶ %s\033[0m\n' "$1"; }   # cyan Überschrift
@@ -45,7 +44,6 @@ die()  { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 # ---- Vorbedingungen ----
 command -v python3 >/dev/null || die "python3 nicht gefunden."
 command -v node    >/dev/null || die "node nicht gefunden."
-[ -d "$RESSOURCE" ] || die "Ordner ressourcenplanung nicht gefunden: $RESSOURCE"
 
 # xlsx-Pfad: Argument > Standard (den gen_import.py selbst kennt)
 if [ -n "$XLSX" ]; then
@@ -58,7 +56,7 @@ fi
 
 # ============================================================
 step "1/5  Excel -> import-data.js  (Python-Parser)"
-( cd "$RESSOURCE" && python3 tools/gen_import.py )
+python3 "$SCRIPT_DIR/gen_import.py"
 ok "import-data.js erzeugt"
 
 # ============================================================

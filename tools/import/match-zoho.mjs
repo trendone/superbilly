@@ -21,8 +21,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const repoRoot = resolve(__dirname, '../..')
-const excelSrc = resolve(repoRoot, '../ressourcenplanung/import-data.js')
+const excelSrc = resolve(__dirname, 'import-data.js')
 const zohoSrc = resolve(__dirname, 'zoho-projects.json')
 const reportsDir = resolve(__dirname, 'reports')
 
