@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   createBooking,
   deleteBooking,
@@ -49,6 +49,15 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
 
   // Drag-Status außerhalb des Render-Zyklus (vermeidet veraltete Closures).
   const drag = useRef<{ empId: string; anchor: string; moved: boolean } | null>(null)
+
+  // Vertikale Scrollposition über Neuladungen (Wochenwechsel, Speichern) halten:
+  // Die Zeilenhöhen hängen von den gestapelten Buchungen ab, daher ändert sich
+  // die Gesamthöhe je Woche und der Browser kappt/verschiebt scrollTop sonst.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollTopRef = useRef(0)
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollTopRef.current
+  }, [data])
 
   // Arbeitstage (Mo–Fr) über die sichtbaren 1 oder 2 Wochen.
   const days = useMemo(() => {
@@ -252,7 +261,13 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
       {loading && !data && <div className="status pending">… lädt</div>}
 
       {data && (
-        <div className="grid-scroll">
+        <div
+          className="grid-scroll"
+          ref={scrollRef}
+          onScroll={() => {
+            scrollTopRef.current = scrollRef.current?.scrollTop ?? 0
+          }}
+        >
         <div
           className="grid"
           style={
