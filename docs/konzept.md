@@ -424,7 +424,7 @@ Rechnungs-/Meilenstein-Dashboard ist das erste Feature direkt darauf.
 - offene Deals als weiche/gewichtete Last, Was-wäre-wenn-Ansicht, Kapazitäts-Check
 - Umsetzung: eigene Tabelle `pipeline_deals` (isoliert von `projects` → nicht in
   Planung/Auswertung sichtbar), Edge Function `sync-pipeline` (COQL auf Deals,
-  Stage ∈ {Angebot versendet, Verhandlungsphase}), Unterbereich „🔮 Pipeline-Forecast"
+  Stage ∈ {Angebot verschickt, Verhandlungsphase}), Unterbereich „🔮 Pipeline-Forecast"
   im Tab „Neue Projekte". Gewichtung = Zoho-`Probability`; Tage = Volumen/2000;
   Verteilung ab Abschlussdatum, max. 5 T/Woche.
 - Voraussetzungen: v2.1 · Risiko: mittel
