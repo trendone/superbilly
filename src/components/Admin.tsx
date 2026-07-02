@@ -35,6 +35,7 @@ export default function Admin({ currentEmail }: { currentEmail: string }) {
   const [data, setData] = useState<AdminData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [sub, setSub] = useState<'user' | 'mite'>('user')
 
   function load() {
     return fetchAdmin()
@@ -50,17 +51,25 @@ export default function Admin({ currentEmail }: { currentEmail: string }) {
     <div className="analytics">
       <div className="ana-head">
         <h2 className="admin-h">Verwaltung</h2>
+        <div className="sub-tabs">
+          <button className={`tab${sub === 'user' ? ' active' : ''}`} onClick={() => setSub('user')}>
+            👥 User
+          </button>
+          <button className={`tab${sub === 'mite' ? ' active' : ''}`} onClick={() => setSub('mite')}>
+            ⏱ Mite
+          </button>
+        </div>
       </div>
       {error && <div className="status err">✕ {error}</div>}
       {loading && <div className="status pending">… lädt</div>}
-      {data && (
+      {data && sub === 'user' && (
         <>
           <EmployeesSection data={data} reload={load} setError={setError} currentEmail={currentEmail} />
-          <MappingSection />
           <DepartmentsSection data={data} reload={load} setError={setError} />
           <CategoriesSection data={data} reload={load} />
         </>
       )}
+      {data && sub === 'mite' && <MappingSection />}
     </div>
   )
 }
@@ -193,15 +202,17 @@ function EmployeesSection({
                 <td className="num">—</td>
                 <td>—</td>
                 <td><span className="badge" style={{ background: '#7c6dfa22', color: '#7c6dfa' }}>Admin</span></td>
-                <td className="ms-row-actions">
-                  <button
-                    className="btn-ghost"
-                    disabled={roleBusy === email || email === currentEmail.toLowerCase()}
-                    title={email === currentEmail.toLowerCase() ? 'Die eigene Admin-Rolle kann nicht entzogen werden' : 'Admin-Rolle entziehen'}
-                    onClick={() => toggleAdmin(email, false)}
-                  >
-                    Admin entziehen
-                  </button>
+                <td>
+                  <div className="ms-row-actions">
+                    <button
+                      className="btn-ghost"
+                      disabled={roleBusy === email || email === currentEmail.toLowerCase()}
+                      title={email === currentEmail.toLowerCase() ? 'Die eigene Admin-Rolle kann nicht entzogen werden' : 'Admin-Rolle entziehen'}
+                      onClick={() => toggleAdmin(email, false)}
+                    >
+                      Admin entziehen
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -266,25 +277,29 @@ function EmpRow({
           {e.active ? <span className="badge green">aktiv</span> : <span className="badge dim">inaktiv</span>}
           {!e.bookable && <span className="badge dim" title="Nicht im Planungsraster/Auswertung"> nicht buchbar</span>}
         </td>
-        <td className="admin-role-cell">
-          {isAdmin
-            ? <span className="badge" style={{ background: '#7c6dfa22', color: '#7c6dfa' }}>Admin</span>
-            : <span className="badge dim">User</span>}
-          {onToggleAdmin && (
-            <button
-              className="btn-ghost admin-role-toggle"
-              disabled={roleBusy || (isAdmin && isSelf)}
-              title={isAdmin ? (isSelf ? 'Die eigene Admin-Rolle kann nicht entzogen werden' : 'Admin-Rolle entziehen') : 'Zum Admin machen'}
-              onClick={() => onToggleAdmin(!isAdmin)}
-            >
-              {isAdmin ? 'Admin entziehen' : 'Zum Admin machen'}
-            </button>
-          )}
+        <td>
+          <div className="admin-role-cell">
+            {isAdmin
+              ? <span className="badge" style={{ background: '#7c6dfa22', color: '#7c6dfa' }}>Admin</span>
+              : <span className="badge dim">User</span>}
+            {onToggleAdmin && (
+              <button
+                className="btn-ghost admin-role-toggle"
+                disabled={roleBusy || (isAdmin && isSelf)}
+                title={isAdmin ? (isSelf ? 'Die eigene Admin-Rolle kann nicht entzogen werden' : 'Admin-Rolle entziehen') : 'Zum Admin machen'}
+                onClick={() => onToggleAdmin(!isAdmin)}
+              >
+                {isAdmin ? 'Admin entziehen' : 'Zum Admin machen'}
+              </button>
+            )}
+          </div>
         </td>
-        <td className="ms-row-actions">
-          <button className="icon-btn" title="Bearbeiten" onClick={onEdit}>✎</button>
-          <button className="icon-btn" title="Arbeitszeiten" onClick={onTogglePeriods}>🕒</button>
-          <button className="icon-btn" title="Löschen" onClick={onDelete}>🗑</button>
+        <td>
+          <div className="ms-row-actions">
+            <button className="icon-btn" title="Bearbeiten" onClick={onEdit}>✎</button>
+            <button className="icon-btn" title="Arbeitszeiten" onClick={onTogglePeriods}>🕒</button>
+            <button className="icon-btn" title="Löschen" onClick={onDelete}>🗑</button>
+          </div>
         </td>
       </tr>
       {isPeriods && (
