@@ -69,6 +69,7 @@ const extraExcel = new Map() // interne Kombis (kein Zoho-Teil) -> ein Excel-Pro
 function resolveTarget(key, bookingStart) {
   const d = decisions.get(key)
   if (!d) return null
+  if (d.system) return { sys: d.system, stable: 'sys:' + d.system } // interne Kombi-Teile -> System (blau)
   if (d.verdict === 'SICHER') return { pid: d.match.zohoId, stable: 'zoho:' + d.match.zohoId }
   if (d.verdict === 'SPLIT') {
     let best = d.split[0]
@@ -113,8 +114,9 @@ for (const t of data.tasks) {
       const v = decisions.get(p.key)?.verdict
       return v === 'SICHER' || v === 'SPLIT'
     })
-    if (parts.length > 1 && !anyZoho) {
-      // reine interne Kombi (kein Zoho-Treffer, z. B. "Admin/Sales") -> nicht splitten
+    const anySystem = parts.some((p) => decisions.get(p.key)?.system)
+    if (parts.length > 1 && !anyZoho && !anySystem) {
+      // reine interne Kombi ohne Zoho-/System-Treffer -> nicht splitten, ein Excel-Projekt
       const name = projName[t.projectId]
       const ext = slugExt(name)
       extraExcel.set(ext, name)
@@ -125,7 +127,7 @@ for (const t of data.tasks) {
       for (const { key } of parts) {
         const target = resolveTarget(key, t.startDate)
         if (target && decisions.get(key)?.verdict === 'SPLIT') stats.split++
-        add(target, normBudget(t.budget, parts.length), false)
+        add(target, normBudget(t.budget, parts.length), !!target?.sys)
       }
     }
     stats.project++

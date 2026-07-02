@@ -40,6 +40,19 @@ function isSpecial(name) {
 
 // Ziel-Disposition für Nicht-Projekt-Einträge: System-Kategorie (DB is_system) oder
 // skip (Feiertag rechnet die App selbst; Müll = reine Zahlen/Datumsfragmente).
+
+// Interne Sammel-Kategorie eines EINZELnamens (kein "/") -> is_system-Zielprojekt der App
+// (in der App blau, da is_system & keine Abwesenheit). null = nicht intern.
+function internalCat(name) {
+  const n = name.trim().toLowerCase()
+  if (n === 'ts') return 'TS'
+  if (/\bsales\b/.test(n)) return 'Sales'   // Sales, Sales <X>, Riyadh Sales reise, Sales Reise …
+  if (n === 'admin' || n === 'intern' || n === 'kundenbetreuung'
+      || n === 'office & people & culture' || /^fr(ü|ue)hlingsfest/.test(n)
+      || n === 'consulting kick off' || n === 'angebote') return 'Admin'
+  return null
+}
+
 function classifyTarget(name) {
   const n = name.toLowerCase()
   if (/^[\s0-9.,]+$/.test(name)) return { type: 'skip', reason: 'müll' }
@@ -49,6 +62,19 @@ function classifyTarget(name) {
   if (/kurzarbeit/.test(n)) return { type: 'system', target: 'Kurzarbeit' }
   if (n === 'uni') return { type: 'system', target: 'Admin' }
   if (/(^|\b)(frei|freier? tag|frei aus|ausgleich)/.test(n)) return { type: 'system', target: 'Frei' }
+  // Interne Sammel-Kategorien -> System (blau). Kombis nur, wenn ALLE Teile intern sind
+  // (sonst z. B. "Sales / KPMG" -> normal splitten, damit KPMG erhalten bleibt).
+  const parts = name.split('/').map((s) => s.trim()).filter(Boolean)
+  if (parts.length > 1) {
+    const cats = parts.map(internalCat)
+    if (cats.every(Boolean)) {
+      const set = new Set(cats)
+      return { type: 'system', target: set.has('Sales') && set.has('Admin') && set.size === 2 ? 'Admin/Sales' : 'Admin' }
+    }
+    return null
+  }
+  const c = internalCat(name)
+  if (c) return { type: 'system', target: c }
   return null
 }
 
@@ -397,6 +423,9 @@ const map = {
       r.verdict === 'UNSICHER'
         ? r.scored.slice(0, 3).map((x) => ({ ...zRef(x.z), score: Math.round(x.s * 100) / 100 }))
         : null,
+    // interne Kategorie als Kombi-Teil (z. B. "Sales" in "Sales / KPMG") -> System-Ziel,
+    // damit auch diese Teil-Buchungen blau/is_system werden statt graues Excel-Projekt.
+    system: internalCat(r.c.display) || null,
   })),
   combos: combos.map((cb) => ({ name: cb.name, bookings: cb.bookings, parts: cb.parts })),
   // Vollständige Import-Anweisung je Excel-Projekt-ID: der Writer muss die
