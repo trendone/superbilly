@@ -1,4 +1,8 @@
 {
+  "straumann zdf": "A - 7821",
+  "digethic deck": "A - 7727",
+  "fzag vom": "A - 7972",
+
   "_comment": "Manuelle Zuordnung Excel-Kandidat -> Zoho-Deal. Wird von match-zoho.mjs VOR Report/Map angewandt und ueberlebt damit jeden Re-Run der Pipeline. Key = normalisierter Excel-Key (Spalte 'key' in reports/match-map.json). Wert = Angebotsnummer (z.B. 'A - 7821') ODER exakter Zoho-Deal-Name ODER projects-UUID ODER 'KEIN' (= bewusst kein Zoho-Deal, als eigenes Excel-Projekt fuehren). Overrides greifen unabhaengig vom heuristischen Verdict, korrigieren also auch falsche SICHER/SPLIT. Keys mit fuehrendem _ werden ignoriert (Doku). Tote Keys / nicht aufloesbare Ziele werden im Report + Konsole gewarnt, nicht stillschweigend verschluckt.",
   "_anleitung": "Bestaetigte Zuordnung als normale Zeile eintragen, z.B.  \"straumann zdf\": \"A - 7821\"  -- dann match-zoho.mjs neu laufen lassen. Die _kandidaten-Liste unten ist nur Referenz (Stand 2026-07-02) und wird ignoriert.",
   "_kandidaten": {
