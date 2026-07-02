@@ -124,8 +124,10 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
 
   // Produktiv = Nicht-System-Zeit. Abwesenheit (Urlaub/Krank/Frei/Kurzarbeit)
   // UND interne Zeit (Admin/TS) reduzieren die buchbare Kapazität.
-  // Verfügbarkeit = FTE-Anteil × (Arbeitstage − Feiertage) − Abwesenheit − Admin.
-  function capacityFor(empId: string, weeklyHours: number) {
+  // Ein voller Tag = 1,0 für alle; Teilzeit wird über als „Frei" geplante Tage
+  // abgebildet (nicht über die Wochenstunden).
+  // Verfügbarkeit = (Arbeitstage − Feiertage) − Abwesenheit − Admin.
+  function capacityFor(empId: string) {
     let productive = 0
     let absence = 0
     let admin = 0
@@ -138,7 +140,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
       }
     }
     const workdays = days.filter((d) => !holidayName(toISODate(d))).length
-    const gross = (weeklyHours / 40) * workdays
+    const gross = workdays
     const avail = Math.max(0, gross - absence - admin)
     const pct = avail ? Math.round((productive / avail) * 100) : 0
     return {
@@ -151,8 +153,9 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
   }
 
   // Tages-Überbuchung: Arbeitsbudget (ohne Abwesenheit) übersteigt die um
-  // Abwesenheit/Feiertag reduzierte Tageskapazität dieses Mitarbeiters.
-  function dayOverload(empId: string, weeklyHours: number, day: Date) {
+  // Abwesenheit/Feiertag reduzierte Tageskapazität. Ein voller Tag = 1,0;
+  // Teilzeit-freie Tage werden als „Frei" (Abwesenheit) geplant, nicht skaliert.
+  function dayOverload(empId: string, day: Date) {
     let work = 0
     let absence = 0
     for (const b of bookingsFor(empId, day)) {
@@ -160,7 +163,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
       if (isAbsence(p)) absence += Number(b.budget)
       else work += Number(b.budget)
     }
-    const cap = holidayName(toISODate(day)) ? 0 : weeklyHours / 40
+    const cap = holidayName(toISODate(day)) ? 0 : 1
     const avail = Math.max(0, cap - absence)
     return work > avail + 1e-9 ? Math.round(work * 10) / 10 : null
   }
@@ -288,7 +291,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
                 </div>
               )}
               {g.emps.map((emp) => {
-            const cap = capacityFor(emp.id, Number(emp.weekly_hours))
+            const cap = capacityFor(emp.id)
             const over = cap.pct > 100
             return (
               <Fragment key={emp.id}>
@@ -311,7 +314,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
 
                 {days.map((day, i) => {
                   const iso = toISODate(day)
-                  const over = dayOverload(emp.id, Number(emp.weekly_hours), day)
+                  const over = dayOverload(emp.id, day)
                   return (
                   <div
                     key={i}
@@ -362,12 +365,10 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
 
       {modal && data && (() => {
         const empId = modal.mode === 'edit' ? modal.booking.employee_id : modal.empId
-        const emp = data.employees.find((e) => e.id === empId)
         return (
         <BookingModal
           employeeName={modal.empName}
           employeeId={empId}
-          dailyCapacity={Number(emp?.weekly_hours ?? 40) / 40}
           projects={data.projects}
           initial={modal.mode === 'edit' ? modal.booking : undefined}
           defaultStart={modal.mode === 'add' ? modal.start : undefined}

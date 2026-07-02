@@ -18,7 +18,6 @@ import { addDays, formatDay, toISODate } from '../lib/dates'
 export default function BookingModal({
   employeeName,
   employeeId,
-  dailyCapacity,
   projects,
   initial,
   defaultStart,
@@ -29,7 +28,6 @@ export default function BookingModal({
 }: {
   employeeName: string
   employeeId: string
-  dailyCapacity: number
   projects: Project[]
   initial?: Booking
   defaultStart?: string
@@ -112,7 +110,8 @@ export default function BookingModal({
           const wd = d.getDay()
           if (wd !== 0 && wd !== 6) {
             const lo = loads[iso] ?? { work: 0, absence: 0 }
-            const cap = holidayName(iso) ? 0 : dailyCapacity
+            // Ein voller Tag = 1,0; Teilzeit läuft über als „Frei" geplante Tage.
+            const cap = holidayName(iso) ? 0 : 1
             const avail = Math.max(0, cap - lo.absence)
             const total = Math.round((lo.work + budget) * 10) / 10
             if (total > avail + 1e-9 && (!worst || total - avail > worst.total - worst.avail))
@@ -126,7 +125,7 @@ export default function BookingModal({
     return () => {
       cancelled = true
     }
-  }, [projectId, isAbsenceProject, start, end, budget, employeeId, absenceIds, dailyCapacity, initial?.id])
+  }, [projectId, isAbsenceProject, start, end, budget, employeeId, absenceIds, initial?.id])
 
   function onStartChange(v: string) {
     setStart(v)
