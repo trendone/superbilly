@@ -420,8 +420,13 @@ Rechnungs-/Meilenstein-Dashboard ist das erste Feature direkt darauf.
 - `sync-zoho` (Pull) + `zoho-webhook` (Closed Won), Mapping (4.4), Idempotenz
 - Voraussetzungen: v1.1 · Risiko: mittel (OAuth/Token-Handling)
 
-### v2.2 – Pipeline-Forecast
+### v2.2 – Pipeline-Forecast ✅ LIVE (2026-07-02)
 - offene Deals als weiche/gewichtete Last, Was-wäre-wenn-Ansicht, Kapazitäts-Check
+- Umsetzung: eigene Tabelle `pipeline_deals` (isoliert von `projects` → nicht in
+  Planung/Auswertung sichtbar), Edge Function `sync-pipeline` (COQL auf Deals,
+  Stage ∈ {Angebot versendet, Verhandlungsphase}), Unterbereich „🔮 Pipeline-Forecast"
+  im Tab „Neue Projekte". Gewichtung = Zoho-`Probability`; Tage = Volumen/2000;
+  Verteilung ab Abschlussdatum, max. 5 T/Woche.
 - Voraussetzungen: v2.1 · Risiko: mittel
 
 ### v2.3 – Mite-Anbindung (Ist-Zeiten)

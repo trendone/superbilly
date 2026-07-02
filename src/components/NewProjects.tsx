@@ -3,6 +3,7 @@ import { fetchProjectsView, type ProjectsView } from '../lib/projects'
 import { KEYNOTE_KTR } from '../lib/analytics'
 import { triggerZohoSync, type ZohoSyncResult } from '../lib/zoho'
 import { ProjectDetailView } from './Projects'
+import PipelineForecast from './PipelineForecast'
 
 const eur = new Intl.NumberFormat('de-DE', {
   style: 'currency',
@@ -11,6 +12,7 @@ const eur = new Intl.NumberFormat('de-DE', {
 })
 
 export default function NewProjects() {
+  const [sub, setSub] = useState<'plan' | 'pipeline'>('plan')
   const [view, setView] = useState<ProjectsView | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -82,6 +84,22 @@ export default function NewProjects() {
   }
 
   return (
+    <div>
+      <div className="sub-tabs">
+        <button className={`tab${sub === 'plan' ? ' active' : ''}`} onClick={() => setSub('plan')}>
+          Zu verplanen
+        </button>
+        <button
+          className={`tab${sub === 'pipeline' ? ' active' : ''}`}
+          onClick={() => setSub('pipeline')}
+        >
+          🔮 Pipeline-Forecast
+        </button>
+      </div>
+
+      {sub === 'pipeline' && <PipelineForecast />}
+
+      {sub === 'plan' && (
     <div className="dash">
       <div className="ana-head">
         <div>
@@ -195,6 +213,8 @@ export default function NewProjects() {
           </button>
         ))}
       </div>
+    </div>
+      )}
     </div>
   )
 }

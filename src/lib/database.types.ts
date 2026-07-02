@@ -289,6 +289,45 @@ export type Database = {
           },
         ]
       }
+      pipeline_deals: {
+        Row: {
+          amount_eur: number | null
+          client: string | null
+          closing_date: string | null
+          external_id: string
+          last_synced_at: string
+          name: string
+          probability: number | null
+          service_date: string | null
+          source: string
+          stage: string | null
+        }
+        Insert: {
+          amount_eur?: number | null
+          client?: string | null
+          closing_date?: string | null
+          external_id: string
+          last_synced_at?: string
+          name: string
+          probability?: number | null
+          service_date?: string | null
+          source?: string
+          stage?: string | null
+        }
+        Update: {
+          amount_eur?: number | null
+          client?: string | null
+          closing_date?: string | null
+          external_id?: string
+          last_synced_at?: string
+          name?: string
+          probability?: number | null
+          service_date?: string | null
+          source?: string
+          stage?: string | null
+        }
+        Relationships: []
+      }
       project_actuals: {
         Row: {
           minutes: number
