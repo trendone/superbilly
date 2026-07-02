@@ -50,6 +50,19 @@ const gap = (book, leist) => {
   const diff = (toD(leist).getTime() - toD(book).getTime()) / DAY
   return diff >= 0 ? diff : -diff * 3
 }
+// Arbeitstage (Mo–Fr) im Bereich [start..end] inklusive, als ISO-Liste.
+// Für tageweise System-Buchungen: mehrtägige Excel-Ranges -> Einzeltage.
+const eachWorkingDay = (startISO, endISO) => {
+  const out = []
+  const d = toD(startISO)
+  const end = toD(endISO)
+  while (d <= end) {
+    const wd = d.getUTCDay() // 0 = So, 6 = Sa
+    if (wd !== 0 && wd !== 6) out.push(d.toISOString().slice(0, 10))
+    d.setUTCDate(d.getUTCDate() + 1)
+  }
+  return out
+}
 
 const mod = await import(pathToFileURL(excelSrc).href)
 const data = mod.IMPORT_DATA ?? mod.default
@@ -99,12 +112,18 @@ for (const t of data.tasks) {
 
   const add = (target, budget, isSystem) => {
     if (!target) { stats.unknown++; return }
-    const extId = `billy:${empKey}:${t.startDate}:${t.endDate}:${target.stable ?? 'sys:' + target.sys}`
-    bookings.set(extId, {
-      empName: emp.name,
-      proj: isSystem ? { sys: target.sys } : target.pid ? { pid: target.pid } : { ext: target.ext },
-      start: t.startDate, end: t.endDate, budget, extId,
-    })
+    const stable = target.stable ?? 'sys:' + target.sys
+    const proj = isSystem ? { sys: target.sys } : target.pid ? { pid: target.pid } : { ext: target.ext }
+    const push = (start, end) => {
+      const extId = `billy:${empKey}:${start}:${end}:${stable}`
+      bookings.set(extId, { empName: emp.name, proj, start, end, budget, extId })
+    }
+    // Systemtage (außer Urlaub) sind tageweise: mehrtägige Excel-Ranges in Einzeltage (Mo–Fr) splitten.
+    if (isSystem && target.sys !== 'Urlaub' && t.startDate !== t.endDate) {
+      for (const day of eachWorkingDay(t.startDate, t.endDate)) push(day, day)
+      return
+    }
+    push(t.startDate, t.endDate)
   }
 
   if (disp.type === 'system') {
