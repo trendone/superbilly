@@ -80,9 +80,11 @@ function resolveTarget(key, bookingStart) {
   return { ext: 'excel:' + key, stable: 'excel:' + key }
 }
 
-// ---- Excel-Only-Projekte sammeln (UNSICHER + KEIN) ----
+// ---- Excel-Only-Projekte sammeln (UNSICHER + KEIN, aber NICHT die auf System gerouteten) ----
+// d.system-Entscheidungen (interne Kombi-Teile wie "Sales" in "Sales / KPMG") gehen auf die
+// is_system-Kategorie -> keine graue Excel-Projekt-Hülle anlegen.
 const excelProjects = map.decisions
-  .filter((d) => d.verdict === 'UNSICHER' || d.verdict === 'KEIN')
+  .filter((d) => (d.verdict === 'UNSICHER' || d.verdict === 'KEIN') && !d.system)
   .map((d) => ({ ext: 'excel:' + d.key, name: d.display }))
 
 // ---- Buchungen bauen ----
