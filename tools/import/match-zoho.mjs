@@ -258,6 +258,37 @@ const results = candidates.map((c) => {
   return { c, verdict: 'SPLIT', scored, by: 'datum', dist, share, plausible }
 })
 
+// ---- Manuelle Overrides anwenden (überleben Re-Runs) ----
+// overrides.json: { "<excel-key>": "<Angebotsnr | Zoho-Name | UUID | KEIN>" }
+// Der key ist der normalisierte Excel-Kandidaten-Key (siehe match-map.json .decisions[].key).
+// Ziel wird gegen zoho-projects.json aufgelöst (offer -> id -> name). Spezialwert "KEIN"
+// zwingt den Kandidaten in ein eigenes Excel-Projekt. Overrides greifen unabhängig vom
+// heuristischen Verdict (korrigieren also auch falsche SICHER/SPLIT).
+const ovPath = resolve(__dirname, 'overrides.json')
+let overrides = {}
+try { overrides = JSON.parse(readFileSync(ovPath, 'utf8')) } catch { /* keine Datei = keine Overrides */ }
+const zById = new Map(zoho.map((z) => [z.id, z]))
+const zByOffer = new Map(zoho.filter((z) => z.offer).map((z) => [String(z.offer).trim().toLowerCase(), z]))
+const zByName = new Map(zoho.map((z) => [z.name.trim().toLowerCase(), z]))
+const resByKeyEarly = new Map(results.map((r) => [r.c.key, r]))
+const ovApplied = [], ovUnmatchedKey = [], ovUnresolved = []
+for (const rawKey of Object.keys(overrides)) {
+  if (rawKey.startsWith('_')) continue // _comment / _beispiel etc.
+  const r = resByKeyEarly.get(rawKey)
+  if (!r) { ovUnmatchedKey.push(rawKey); continue }
+  const t = String(overrides[rawKey]).trim()
+  if (t.toUpperCase() === 'KEIN') {
+    r.verdict = 'KEIN'; r.by = 'override'; r.best = undefined; r.dist = undefined; r.plausible = undefined
+    ovApplied.push({ key: rawKey, to: 'KEIN (eigenes Excel-Projekt)' })
+    continue
+  }
+  const z = zById.get(t) || zByOffer.get(t.toLowerCase()) || zByName.get(t.toLowerCase())
+  if (!z) { ovUnresolved.push({ key: rawKey, target: overrides[rawKey] }); continue }
+  r.verdict = 'SICHER'; r.by = 'override'; r.best = { z, s: 1 }
+  r.dist = undefined; r.plausible = undefined
+  ovApplied.push({ key: rawKey, to: `${z.name}${z.offer ? ` (${z.offer})` : ''}` })
+}
+
 const buckets = { SICHER: [], SPLIT: [], UNSICHER: [], KEIN: [] }
 for (const r of results) buckets[r.verdict].push(r)
 const sureName = buckets.SICHER.filter((r) => r.by === 'name')
@@ -272,10 +303,26 @@ const distStr = (dist) =>
 
 L.push('# Zoho-Matching-Test (Dry-Run) – mit Datums-Tie-Breaker')
 L.push(`\nExcel-Kandidaten: **${candidates.length}** · Zoho-Projekte: **${zoho.length}**`)
-L.push(`\n- ✅ SICHER gesamt: **${buckets.SICHER.length}**  (über Name: ${sureName.length} · über Datum aufgelöst: ${sureDate.length})`)
+const sureOverride = buckets.SICHER.filter((r) => r.by === 'override')
+L.push(`\n- ✅ SICHER gesamt: **${buckets.SICHER.length}**  (über Name: ${sureName.length} · über Datum aufgelöst: ${sureDate.length} · manuell: ${sureOverride.length})`)
 L.push(`- 🔀 SPLIT (Firma streut über mehrere Deals/Termine): **${buckets.SPLIT.length}**`)
 L.push(`- ⚠️ UNSICHER (Name mittel, Datum löst nicht): **${buckets.UNSICHER.length}**`)
 L.push(`- ❌ KEIN TREFFER (interne Kategorie / kein Zoho-Deal): **${buckets.KEIN.length}**`)
+
+L.push('\n---\n\n## 🔧 Manuelle Overrides (aus overrides.json – überleben Re-Runs)')
+if (!ovApplied.length && !ovUnmatchedKey.length && !ovUnresolved.length) {
+  L.push('\nKeine. (Datei `overrides.json` fehlt oder ist leer.)')
+} else {
+  if (ovApplied.length) {
+    L.push('\n| Excel-Key | → Ziel |')
+    L.push('|---|---|')
+    for (const o of ovApplied) L.push(`| \`${o.key}\` | ${o.to} |`)
+  }
+  if (ovUnmatchedKey.length)
+    L.push(`\n⚠️ **${ovUnmatchedKey.length} Override-Key(s) ohne passenden Excel-Kandidaten** (Tippfehler? Kandidat existiert nicht mehr?): ${ovUnmatchedKey.map((k) => `\`${k}\``).join(', ')}`)
+  if (ovUnresolved.length)
+    L.push(`\n⚠️ **${ovUnresolved.length} Override-Ziel(e) nicht in Zoho auflösbar** (Angebotsnr/Name/UUID prüfen, ggf. \`export-zoho.sh\` neu ziehen): ${ovUnresolved.map((o) => `\`${o.key}\` → \`${o.target}\``).join(', ')}`)
+}
 
 L.push('\n---\n\n## ✅ SICHER – über Datum aufgelöst (vorher mehrdeutig)')
 if (!sureDate.length) L.push('\nKeine.')
@@ -362,4 +409,7 @@ writeFileSync(mapOut, JSON.stringify(map, null, 2) + '\n')
 
 console.log('Report:', out)
 console.log('Map:   ', mapOut)
-console.log(`SICHER ${buckets.SICHER.length} (Name ${sureName.length} / Datum ${sureDate.length}) · SPLIT ${buckets.SPLIT.length} · UNSICHER ${buckets.UNSICHER.length} · KEIN ${buckets.KEIN.length}`)
+console.log(`SICHER ${buckets.SICHER.length} (Name ${sureName.length} / Datum ${sureDate.length} / manuell ${sureOverride.length}) · SPLIT ${buckets.SPLIT.length} · UNSICHER ${buckets.UNSICHER.length} · KEIN ${buckets.KEIN.length}`)
+if (ovApplied.length) console.log(`Overrides angewandt: ${ovApplied.length}`)
+if (ovUnmatchedKey.length) console.warn(`⚠️  Override-Keys ohne Excel-Kandidat: ${ovUnmatchedKey.join(', ')}`)
+if (ovUnresolved.length) console.warn(`⚠️  Override-Ziele nicht in Zoho auflösbar: ${ovUnresolved.map((o) => `${o.key}→${o.target}`).join(', ')}`)

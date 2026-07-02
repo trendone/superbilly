@@ -40,6 +40,7 @@ projects (Supabase)  ←  sync-zoho Edge Function  ←  Zoho CRM
 | `analyze.mjs` | Validierung: Mitarbeiter-Hinweise, Projekt-Dedup, Sonderfälle → `reports/report.md` |
 | `export-zoho.sh` | exportiert Zoho-Projekte aus Supabase → `zoho-projects.json` |
 | `match-zoho.mjs` | matcht Excel-Projekte ↔ Zoho-Deals → `reports/match-zoho.md` + `reports/match-map.json` |
+| `overrides.json` | manuelle Excel→Zoho-Zuordnungen (überleben Re-Runs, siehe [§7](#7-manuelle-overrides-overridesjson--überleben-re-runs)) |
 | `zoho-projects.json` | Snapshot der Zoho-Projekte (Input fürs Matching, von `export-zoho.sh`) |
 | `reports/match-map.json` | **maschinenlesbare** Zuordnung inkl. `projectDispositions` – Input für den Writer |
 | `import-to-db.mjs` | **Writer:** import-data.js + match-map.json → idempotentes SQL → Supabase |
@@ -172,13 +173,55 @@ Verifiziert idempotent (2. Lauf → unverändert) und auf den echten Zoho-Projek
 **Delta / Re-Import mit neueren Daten** – Pipeline A–E erneut laufen lassen:
 - `bookings.external_id` ist inhaltsbasiert (Name+Datum+Ziel) → **stabil über Neugenerierungen**;
   gleiche Buchung = Update, neue = Insert.
-- Entfernte Buchungen aufräumen (optional, scoped): `delete from bookings where source='excel'
-  and start_date between :von and :bis and external_id <> all(:aktuelle_ids)`.
 - Vor jedem Lauf `export-zoho.sh` neu ziehen, damit neue/aktualisierte Zoho-Deals im Matching sind.
 
+**Parallelbetrieb mit Google Docs (`--prune`)** – für den Zeitraum, in dem noch im Google-Docs
+weitergeplant wird und die App nicht die Quelle der Wahrheit ist:
+- Ohne prune ist der Import **rein additiv**: eine im Doc *verschobene*, *umgewidmete* oder
+  *gelöschte* Buchung hinterlässt eine **Waise** in Supabase (der neue Inhalt bekommt einen neuen
+  `external_id`, der alte bleibt stehen) → die App läuft mit Doppelbuchungen voll.
+- `node tools/import/import-to-db.mjs --prune [--apply]` löscht deshalb im **importierten
+  Datumsfenster** (`min(start) .. max(end)` der aktuellen xlsx, derzeit nur 2026-Tabs) alle
+  `source='excel'`-Buchungen, deren `external_id` im aktuellen Lauf **nicht** mehr vorkommt.
+  Ergebnis: Supabase spiegelt exakt den aktuellen Google-Docs-Stand.
+- **Unberührt bleiben:** app-native Buchungen (`source<>'excel'`) und alle Zoho-Projekte
+  (nur der Buchungs-Payload wird gepruned, nie `projects`). Schutz: bei 0 Buchungen im Lauf
+  wird prune übersprungen (keine Totallöschung).
+- Empfohlener Loop bei jeder Google-Docs-Änderung: xlsx exportieren → A, B, D, dann
+  `import-to-db.mjs --prune --apply`.
+
 **Offen / Verbesserungen:**
-- **UNSICHER-Overrides** (9 Fälle): kleine Mapping-Datei, die der Writer **vor** den Heuristiken
-  anwendet, damit manuelle Entscheidungen jeden Delta-Lauf überleben. Aktuell landen UNSICHER als
-  eigene Excel-Projekte (Buchungen gehen nicht verloren, aber Zuordnung offen).
 - **Excel „Admin"-Kategorie vs. System „Admin":** existieren parallel (Excel-Kategorie ≠ UNI→Admin).
   Bei Bedarf in der App zusammenführen.
+
+---
+
+## 7. Manuelle Overrides (`overrides.json`) – überleben Re-Runs
+
+UNSICHER-Fälle (und falsche SICHER/SPLIT) lassen sich manuell festklopfen, ohne die Heuristik
+anzufassen. `match-zoho.mjs` liest `tools/import/overrides.json` und wendet sie **vor** Report +
+`match-map.json` an → die Entscheidung fließt deterministisch durch die ganze Pipeline und
+überlebt jeden Delta-Lauf.
+
+**Format** (Key = normalisierter Excel-Key aus `match-map.json` `.decisions[].key`):
+
+```jsonc
+{
+  "straumann zdf": "A - 7821",                        // per Angebotsnummer
+  "customer development": "Livanova - Begleitung …",  // per exaktem Zoho-Deal-Namen
+  "school hanne": "4f4181d2-…",                       // per projects-UUID
+  "la futura": "KEIN"                                 // bewusst KEIN Zoho-Deal → eigenes Excel-Projekt
+}
+```
+
+- Ziel wird gegen `zoho-projects.json` aufgelöst (**Angebotsnr → UUID → Deal-Name**, in der
+  Reihenfolge). Angebotsnummer ist die robusteste Wahl (menschenlesbar + stabil).
+- Overrides greifen **unabhängig vom heuristischen Verdict** – korrigieren also auch Fehltreffer.
+- Keys mit führendem `_` werden ignoriert (Doku/Referenz). Die mitgelieferte Datei enthält unter
+  `_kandidaten` die 9 aktuellen UNSICHER-Fälle mit Top-Vorschlag als Nachschlage-Hilfe – **bewusst
+  ohne** aktive Zuordnung (mehrere Top-Kandidaten sind erkennbare Fehltreffer).
+- **Keine stille Fehlerunterdrückung:** tote Keys (kein passender Excel-Kandidat) und nicht
+  auflösbare Ziele werden im Report (Sektion „🔧 Manuelle Overrides") **und** auf der Konsole gewarnt.
+
+Ablauf: Zeile in `overrides.json` eintragen → `node tools/import/match-zoho.mjs` → im Report prüfen
+→ `node tools/import/import-to-db.mjs --prune --apply`.

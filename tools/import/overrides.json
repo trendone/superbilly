@@ -1,0 +1,15 @@
+{
+  "_comment": "Manuelle Zuordnung Excel-Kandidat -> Zoho-Deal. Wird von match-zoho.mjs VOR Report/Map angewandt und ueberlebt damit jeden Re-Run der Pipeline. Key = normalisierter Excel-Key (Spalte 'key' in reports/match-map.json). Wert = Angebotsnummer (z.B. 'A - 7821') ODER exakter Zoho-Deal-Name ODER projects-UUID ODER 'KEIN' (= bewusst kein Zoho-Deal, als eigenes Excel-Projekt fuehren). Overrides greifen unabhaengig vom heuristischen Verdict, korrigieren also auch falsche SICHER/SPLIT. Keys mit fuehrendem _ werden ignoriert (Doku). Tote Keys / nicht aufloesbare Ziele werden im Report + Konsole gewarnt, nicht stillschweigend verschluckt.",
+  "_anleitung": "Bestaetigte Zuordnung als normale Zeile eintragen, z.B.  \"straumann zdf\": \"A - 7821\"  -- dann match-zoho.mjs neu laufen lassen. Die _kandidaten-Liste unten ist nur Referenz (Stand 2026-07-02) und wird ignoriert.",
+  "_kandidaten": {
+    "digethics webinar": "Top-Kandidat A - 7727  (Digethic GmbH- Future School-2025), 6 Buchungen",
+    "straumann zdf": "Top-Kandidat A - 7821  (Straumann- Front End/Innovation Portfolio), 2 Buchungen",
+    "tu berlin": "Top-Kandidat A - 7858  (IHK Berlin_Impuls Vortrag) -- vermutlich Fehltreffer, 2 Buchungen",
+    "trendone workshops": "Top-Kandidat A - 7874  (Hochland_Picture of the Future Workshops) -- pruefen, 1 Buchung",
+    "customer development": "Top-Kandidat A - 7840  (Livanova - Product Development Roadmap), 1 Buchung",
+    "digethic deck": "Top-Kandidat A - 7727  (Digethic GmbH- Future School-2025), 1 Buchung",
+    "fzag vom": "Top-Kandidat A - 7972  (FZAG_Kompaktes Trendscouting Immobilien), 1 Buchung",
+    "school hanne": "Top-Kandidat A - 7727  (Digethic GmbH- Future School-2025), 1 Buchung",
+    "la futura": "Top-Kandidat A - 7905  (Kaessbohrer_Futuro Workshop) -- bekannter Fuzzy-Fehltreffer, 1 Buchung"
+  }
+}

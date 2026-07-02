@@ -12,9 +12,18 @@
 //                 (App-Modell halber/ganzer Tag). Deterministischer external_id + source='excel'
 //                 => Re-Import/Delta = Upsert über uq_bookings_external_id.
 //
-// Aufruf:  node tools/import/import-to-db.mjs           (nur SQL schreiben -> reports/import.sql)
-//          node tools/import/import-to-db.mjs --apply   (SQL schreiben UND via psql anwenden)
+// Aufruf:  node tools/import/import-to-db.mjs             (nur SQL schreiben -> reports/import.sql)
+//          node tools/import/import-to-db.mjs --apply     (SQL schreiben UND via psql anwenden)
+//          node tools/import/import-to-db.mjs --prune      (zusätzlich Excel-Waisen im importierten
+//                                                           Zeitraum löschen -> echter Snapshot-Sync)
 //          (--apply braucht SUPABASE_DB_URL im Env; vorher `set -a; . ./.secrets; set +a`)
+//
+// --prune: für den Parallelbetrieb mit Google Docs. Ohne prune ist der Import rein additiv
+//   (verschobene/umgewidmete/gelöschte Einträge hinterlassen Waisen, weil external_id
+//   inhaltsbasiert ist). Mit --prune werden alle source='excel'-Buchungen INNERHALB des
+//   importierten Datumsbereichs gelöscht, die im aktuellen Lauf NICHT mehr vorkommen –
+//   damit spiegelt Supabase exakt den aktuellen Google-Docs-Stand. App-native (source<>'excel')
+//   und Zoho-Daten bleiben unberührt.
 // ============================================================
 
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -28,6 +37,7 @@ const excelSrc = resolve(repoRoot, '../ressourcenplanung/import-data.js')
 const mapSrc = resolve(__dirname, 'reports/match-map.json')
 const sqlOut = resolve(__dirname, 'reports/import.sql')
 const apply = process.argv.includes('--apply')
+const prune = process.argv.includes('--prune')
 
 const q = (s) => "'" + String(s).replace(/'/g, "''") + "'"
 const normName = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim()
@@ -170,6 +180,31 @@ L.push(
   'start_date = excluded.start_date, end_date = excluded.end_date, budget = excluded.budget;'
 )
 
+// ---- 4) Prune: Excel-Waisen im importierten Zeitraum entfernen (nur mit --prune) ----
+// Scope = [min(start) .. max(end)] der aktuell importierten Buchungen (aktuell nur 2026-Tabs).
+// Löscht source='excel'-Buchungen in diesem Fenster, deren external_id NICHT im aktuellen Lauf
+// vorkommt -> verschobene/umgewidmete/gelöschte Google-Docs-Einträge verschwinden. App-native
+// (source<>'excel') und Zoho-Projekte bleiben unberührt (Filter auf source='excel').
+let pruneRange = null
+if (prune) {
+  if (bookings.size === 0) {
+    L.push('\n-- 4) Prune übersprungen: keine Buchungen im aktuellen Lauf (Schutz vor Totallöschung).')
+  } else {
+    const starts = [...bookings.values()].map((b) => b.start)
+    const ends = [...bookings.values()].map((b) => b.end)
+    const minStart = starts.reduce((a, b) => (a < b ? a : b))
+    const maxEnd = ends.reduce((a, b) => (a > b ? a : b))
+    pruneRange = { minStart, maxEnd }
+    const ids = [...bookings.keys()].map(q).join(', ')
+    L.push(`\n-- 4) Prune Excel-Waisen im Fenster ${minStart} .. ${maxEnd} (${bookings.size} aktuelle IDs)`)
+    L.push(
+      `delete from bookings where source = 'excel' ` +
+      `and start_date between ${q(minStart)} and ${q(maxEnd)} ` +
+      `and external_id <> all (array[${ids}]);`
+    )
+  }
+}
+
 L.push('\ncommit;')
 writeFileSync(sqlOut, L.join('\n') + '\n')
 
@@ -179,6 +214,12 @@ console.log(
   `(davon interne Kombis ${extraExcel.size}) · Buchungen ${bookings.size}`
 )
 console.log('Tasks:', JSON.stringify(stats))
+if (prune)
+  console.log(
+    pruneRange
+      ? `Prune AKTIV: Excel-Waisen im Fenster ${pruneRange.minStart} .. ${pruneRange.maxEnd} werden gelöscht.`
+      : 'Prune angefragt, aber übersprungen (keine Buchungen im Lauf).'
+  )
 
 if (apply) {
   const dbUrl = process.env.SUPABASE_DB_URL
