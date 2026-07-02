@@ -408,6 +408,8 @@ code {
 .ms-status.st-bezahlt { background: var(--ok-bg); color: var(--ok-fg); border-color: #a7f3d0; }
 
 .ms-row-actions { display: flex; gap: 2px; justify-content: flex-end; }
+.admin-role-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.admin-role-toggle { font-size: 12px; padding: 2px 8px; }
 .icon-btn {
   border: none;
   background: transparent;

@@ -55,8 +55,7 @@ export default function Admin({ currentEmail }: { currentEmail: string }) {
       {loading && <div className="status pending">… lädt</div>}
       {data && (
         <>
-          <EmployeesSection data={data} reload={load} setError={setError} />
-          <RolesSection data={data} reload={load} setError={setError} currentEmail={currentEmail} />
+          <EmployeesSection data={data} reload={load} setError={setError} currentEmail={currentEmail} />
           <MappingSection />
           <DepartmentsSection data={data} reload={load} setError={setError} />
           <CategoriesSection data={data} reload={load} />
@@ -68,10 +67,18 @@ export default function Admin({ currentEmail }: { currentEmail: string }) {
 
 // ── Mitarbeiter ─────────────────────────────────────────────────────────────
 
-function EmployeesSection({ data, reload, setError }: { data: AdminData; reload: () => Promise<void>; setError: (s: string | null) => void }) {
+function EmployeesSection({
+  data, reload, setError, currentEmail,
+}: {
+  data: AdminData
+  reload: () => Promise<void>
+  setError: (s: string | null) => void
+  currentEmail: string
+}) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [periodsId, setPeriodsId] = useState<string | null>(null)
+  const [roleBusy, setRoleBusy] = useState<string | null>(null)
 
   const periodsByEmp = useMemo(() => {
     const m = new Map<string, AdminData['periods']>()
@@ -83,6 +90,17 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
     return m
   }, [data.periods])
 
+  // Rollen sind per E-Mail geführt. Nur Admins sehen/nutzen die Verwaltung.
+  const adminEmails = useMemo(
+    () => new Set(data.roles.filter((r) => r.role === 'admin').map((r) => r.email.toLowerCase())),
+    [data.roles],
+  )
+  // Admin-Einträge ohne passenden Mitarbeiter — damit sie entziehbar bleiben.
+  const orphanAdmins = useMemo(() => {
+    const empEmails = new Set(data.employees.filter((e) => e.email).map((e) => e.email!.toLowerCase()))
+    return [...adminEmails].filter((email) => !empEmails.has(email)).sort()
+  }, [adminEmails, data.employees])
+
   async function onDelete(e: Employee) {
     if (!confirm(`Mitarbeiter „${e.name}" löschen? Zugehörige Buchungen werden mit entfernt.`)) return
     try {
@@ -90,6 +108,19 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
       await reload()
     } catch (err) {
       setError((err as Error).message)
+    }
+  }
+
+  async function toggleAdmin(email: string, makeAdmin: boolean) {
+    setRoleBusy(email); setError(null)
+    try {
+      if (makeAdmin) await grantAdmin(email)
+      else await revokeAdmin(email)
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setRoleBusy(null)
     }
   }
 
@@ -101,6 +132,7 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
           {adding ? '× Abbrechen' : '+ Mitarbeiter'}
         </button>
       </div>
+      <p className="hint">Nur Admins sehen und nutzen den Bereich „Verwaltung". Alle übrigen angemeldeten Nutzer sind „User" (Planung). Ohne E-Mail kann keine Rolle vergeben werden.</p>
 
       {adding && (
         <EmployeeForm
@@ -123,12 +155,14 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
               <th>Abteilung</th>
               <th className="num">Wochenstunden</th>
               <th>Status</th>
+              <th>Rolle</th>
               <th>Aktionen</th>
             </tr>
           </thead>
           <tbody>
             {data.employees.map((e) => {
               const periods = periodsByEmp.get(e.id) ?? []
+              const email = e.email?.toLowerCase() ?? null
               return (
                 <EmpRow
                   key={e.id}
@@ -137,6 +171,10 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
                   periods={periods}
                   isEditing={editingId === e.id}
                   isPeriods={periodsId === e.id}
+                  isAdmin={email ? adminEmails.has(email) : false}
+                  isSelf={email != null && email === currentEmail.toLowerCase()}
+                  roleBusy={email != null && roleBusy === email}
+                  onToggleAdmin={email ? (makeAdmin) => toggleAdmin(email, makeAdmin) : null}
                   onEdit={() => { setEditingId(editingId === e.id ? null : e.id); setPeriodsId(null) }}
                   onTogglePeriods={() => { setPeriodsId(periodsId === e.id ? null : e.id); setEditingId(null) }}
                   onDelete={() => onDelete(e)}
@@ -147,6 +185,26 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
                 />
               )
             })}
+            {orphanAdmins.map((email) => (
+              <tr key={email} className="dim">
+                <td>— (kein Mitarbeiter)</td>
+                <td className="dim">{email}</td>
+                <td><span className="dim">—</span></td>
+                <td className="num">—</td>
+                <td>—</td>
+                <td><span className="badge" style={{ background: '#7c6dfa22', color: '#7c6dfa' }}>Admin</span></td>
+                <td className="ms-row-actions">
+                  <button
+                    className="btn-ghost"
+                    disabled={roleBusy === email || email === currentEmail.toLowerCase()}
+                    title={email === currentEmail.toLowerCase() ? 'Die eigene Admin-Rolle kann nicht entzogen werden' : 'Admin-Rolle entziehen'}
+                    onClick={() => toggleAdmin(email, false)}
+                  >
+                    Admin entziehen
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -155,13 +213,17 @@ function EmployeesSection({ data, reload, setError }: { data: AdminData; reload:
 }
 
 function EmpRow({
-  e, departments, periods, isEditing, isPeriods, onEdit, onTogglePeriods, onDelete, onSaveEdit, onAddPeriod, onDeletePeriod, setError,
+  e, departments, periods, isEditing, isPeriods, isAdmin, isSelf, roleBusy, onToggleAdmin, onEdit, onTogglePeriods, onDelete, onSaveEdit, onAddPeriod, onDeletePeriod, setError,
 }: {
   e: Employee
   departments: Department[]
   periods: AdminData['periods']
   isEditing: boolean
   isPeriods: boolean
+  isAdmin: boolean
+  isSelf: boolean
+  roleBusy: boolean
+  onToggleAdmin: ((makeAdmin: boolean) => void) | null
   onEdit: () => void
   onTogglePeriods: () => void
   onDelete: () => void
@@ -177,7 +239,7 @@ function EmpRow({
   if (isEditing) {
     return (
       <tr>
-        <td colSpan={6}>
+        <td colSpan={7}>
           <EmployeeForm initial={e} departments={departments} onCancel={onEdit} onSave={onSaveEdit} />
         </td>
       </tr>
@@ -204,6 +266,21 @@ function EmpRow({
           {e.active ? <span className="badge green">aktiv</span> : <span className="badge dim">inaktiv</span>}
           {!e.bookable && <span className="badge dim" title="Nicht im Planungsraster/Auswertung"> nicht buchbar</span>}
         </td>
+        <td className="admin-role-cell">
+          {isAdmin
+            ? <span className="badge" style={{ background: '#7c6dfa22', color: '#7c6dfa' }}>Admin</span>
+            : <span className="badge dim">User</span>}
+          {onToggleAdmin && (
+            <button
+              className="btn-ghost admin-role-toggle"
+              disabled={roleBusy || (isAdmin && isSelf)}
+              title={isAdmin ? (isSelf ? 'Die eigene Admin-Rolle kann nicht entzogen werden' : 'Admin-Rolle entziehen') : 'Zum Admin machen'}
+              onClick={() => onToggleAdmin(!isAdmin)}
+            >
+              {isAdmin ? 'Admin entziehen' : 'Zum Admin machen'}
+            </button>
+          )}
+        </td>
         <td className="ms-row-actions">
           <button className="icon-btn" title="Bearbeiten" onClick={onEdit}>✎</button>
           <button className="icon-btn" title="Arbeitszeiten" onClick={onTogglePeriods}>🕒</button>
@@ -212,7 +289,7 @@ function EmpRow({
       </tr>
       {isPeriods && (
         <tr>
-          <td colSpan={6}>
+          <td colSpan={7}>
             <div className="admin-periods">
               <div className="dim">Abweichende Wochenstunden ab Datum (überschreiben die Basis ab dort):</div>
               {periods.length === 0 && <div className="dim">Keine abweichenden Zeiträume.</div>}
@@ -302,108 +379,6 @@ function EmployeeForm({
         <button type="button" className="btn-ghost" onClick={onCancel}>Abbrechen</button>
       </div>
     </form>
-  )
-}
-
-// ── Rollen / Zugriffsrechte ───────────────────────────────────────────────────
-
-function RolesSection({
-  data, reload, setError, currentEmail,
-}: {
-  data: AdminData
-  reload: () => Promise<void>
-  setError: (s: string | null) => void
-  currentEmail: string
-}) {
-  const [busy, setBusy] = useState<string | null>(null)
-
-  // Rollen sind per E-Mail geführt. Zeilen = alle Mitarbeiter mit E-Mail plus
-  // etwaige Admin-Einträge ohne passenden Mitarbeiter (damit sie entziehbar sind).
-  const adminEmails = useMemo(
-    () => new Set(data.roles.filter((r) => r.role === 'admin').map((r) => r.email.toLowerCase())),
-    [data.roles],
-  )
-  const rows = useMemo(() => {
-    const list = data.employees
-      .filter((e) => e.email)
-      .map((e) => ({ email: e.email!.toLowerCase(), name: e.name }))
-    const known = new Set(list.map((r) => r.email))
-    for (const email of adminEmails) {
-      if (!known.has(email)) list.push({ email, name: '— (kein Mitarbeiter)' })
-    }
-    return list.sort((a, b) => a.name.localeCompare(b.name))
-  }, [data.employees, adminEmails])
-
-  async function toggle(email: string, makeAdmin: boolean) {
-    setBusy(email); setError(null)
-    try {
-      if (makeAdmin) await grantAdmin(email)
-      else await revokeAdmin(email)
-      await reload()
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  return (
-    <section className="ana-section">
-      <div className="ana-toolbar">
-        <h3 className="admin-sec">Zugriffsrechte ({adminEmails.size} Admin{adminEmails.size === 1 ? '' : 's'})</h3>
-      </div>
-      <p className="hint">Nur Admins sehen und nutzen den Bereich „Verwaltung". Alle übrigen angemeldeten Nutzer sind „User" (Planung). Ohne E-Mail kann keine Rolle vergeben werden.</p>
-
-      <div className="table-scroll">
-        <table className="ana-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>E-Mail</th>
-              <th>Rolle</th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const isAdmin = adminEmails.has(r.email)
-              const isSelf = r.email === currentEmail.toLowerCase()
-              return (
-                <tr key={r.email}>
-                  <td>{r.name}</td>
-                  <td className="dim">{r.email}</td>
-                  <td>
-                    {isAdmin
-                      ? <span className="badge" style={{ background: '#7c6dfa22', color: '#7c6dfa' }}>Admin</span>
-                      : <span className="badge dim">User</span>}
-                  </td>
-                  <td className="ms-row-actions">
-                    {isAdmin ? (
-                      <button
-                        className="btn-ghost"
-                        disabled={busy === r.email || isSelf}
-                        title={isSelf ? 'Die eigene Admin-Rolle kann nicht entzogen werden' : 'Admin-Rolle entziehen'}
-                        onClick={() => toggle(r.email, false)}
-                      >
-                        Admin entziehen
-                      </button>
-                    ) : (
-                      <button
-                        className="btn-ghost"
-                        disabled={busy === r.email}
-                        onClick={() => toggle(r.email, true)}
-                      >
-                        Zum Admin machen
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
   )
 }
 
