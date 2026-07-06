@@ -1,6 +1,6 @@
 # Konzept & Roadmap – Ressourcenplanung „Billy"
 
-> Stand: 2026-06-25 · Autor: erarbeitet mit Claude Code
+> Stand: 2026-07-06 · Autor: erarbeitet mit Claude Code
 > Zielbild: Aus dem heutigen wochenbasierten Ressourcen-Tool ein leichtes
 > Projektmanagement- und Planungssystem mit Anbindung an **Zoho CRM** und
 > **Personio** entwickeln – auf einer **soliden, sicheren, relationalen
@@ -146,9 +146,15 @@ milestones (
   title          text not null,
   due_date       date,
   amount_eur     numeric,
-  invoice_status text default 'offen'   -- offen|gestellt|bezahlt
+  invoice_status text default 'offen',  -- offen|gestellt|bezahlt
+  product        text,                  -- Leistungskategorie „Bereich / Typ / KTR" (aus Zoho)
+  invoice_number text,                  -- Rechnungsnummer (aus Zoho)
+  source         text default 'manuell',-- manuell|zoho
+  external_id    text                   -- Zoho-Abgrenzung-ID (Idempotenz)
 )
 ```
+Zoho-gespiegelte Meilensteine (`source='zoho'`, aus dem Custom-Modul
+„Abgrenzungen") sind im Frontend read-only (der Sync überschreibt sie).
 
 ### 3.5 Buchungen (heute `tasks`)
 ```sql
@@ -404,11 +410,18 @@ Rechnungs-/Meilenstein-Dashboard ist das erste Feature direkt darauf.
 - Edge-Functions-Gerüst + Vault + `pg_cron` aktivieren
 - Voraussetzungen: keine · Risiko: mittel (Import-Qualität, RLS sorgfältig testen)
 
-### v1.2 – Rechnungs- & Meilenstein-Dashboard ⭐ (erstes Feature)
+### v1.2 – Rechnungs- & Meilenstein-Dashboard ⭐ ✅ LIVE (erstes Feature)
 **Ziel:** sofortiger Mehrwert „wann muss welche Rechnung raus".
 - `milestones` nutzen; Projekt-Felder `client/status/budget_eur/end_date` pflegbar
-- Dashboard mit Fälligkeits-Ampel (diese Woche / überfällig / nächste 30 Tage)
-- CSV-Export der Auswertung
+- Meilensteine werden automatisch aus Zoho („Abgrenzungen") gespiegelt (read-only),
+  manuelle Meilensteine daneben pflegbar (CRUD)
+- **Forecast-Ansicht (2026-07-06):** blätterbares **3-Monats-Fenster**
+  (Quartalslogik, aktuelles Fenster als Default), je Monat ein Umsatz-Balken
+  **gestapelt nach Rechnungsstatus** (bezahlt/gestellt/offen) + Monatssumme, drei
+  Monats-Spalten mit Meilenstein-Karten. **Überfällig-und-noch-offen** wird als
+  Handlungsbedarf hervorgehoben; Status per Klick wechselbar (offen→gestellt→bezahlt).
+  Ersetzt die frühere feste Ampel-Ansicht (letzter/dieser/nächster Monat).
+- CSV-Export (inkl. Rechnungsstatus)
 - **Quick Win:** deutsche Feiertage als nicht buchbar (automatischer Kalender)
 - Voraussetzungen: v1.1 · Risiko: gering
 
