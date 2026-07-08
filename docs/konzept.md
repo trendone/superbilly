@@ -125,6 +125,16 @@ Projekt-Reports/Budget-Auswertungen ausgeklammert. „Frei" ist die Kategorie f�
 freie Tage (s. Abschnitt 5.4). Feiertage sind **keine** Daten, sondern werden
 automatisch berechnet (Abschnitt 5.4).
 
+**Händisches Anlegen (Fallback, nur Admin):** Kundenprojekte kommen
+grundsätzlich über den Zoho-Sync (`source = 'zoho'`). Für **interne** Projekte
+ohne Zoho-Deal (eigene Vorhaben, Templates) gibt es im Bereich *Projekte* einen
+dezenten Fallback unter der Liste („+ Internes Projekt anlegen"), der nur
+Admins angezeigt wird. `createProject()` setzt fix `source = 'intern'` und
+`is_system = false` (kein `external_id`) – so bleibt das Projekt vom
+Zoho-Spiegel getrennt und ist normal bearbeit-/löschbar. Das Admin-Gate ist
+Frontend-seitig (wie das Verwaltung-Tab); die RLS-Policy `auth_all` erlaubt
+Insert technisch jedem angemeldeten Nutzer.
+
 ### 3.3 Arbeitspakete (PM-Kern)
 ```sql
 workpackages (
