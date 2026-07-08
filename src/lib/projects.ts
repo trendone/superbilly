@@ -5,6 +5,7 @@ import { fetchAll, parseProduct } from './analytics'
 
 export type Project = Database['public']['Tables']['projects']['Row']
 export type ProjectUpdate = Database['public']['Tables']['projects']['Update']
+export type ProjectInsert = Database['public']['Tables']['projects']['Insert']
 
 export const PROJECT_STATES = ['akquise', 'aktiv', 'pausiert', 'abgeschlossen'] as const
 
@@ -126,6 +127,22 @@ export async function fetchProjectDetail(projectId: string): Promise<ProjectDeta
     bookings: book.data as ProjectBooking[],
     employees: emp.data,
   }
+}
+
+/**
+ * Legt ein Projekt händisch an. Gedacht als Fallback für interne Projekte –
+ * Kundenprojekte kommen über den Zoho-Sync. Daher fix `source: 'intern'` und
+ * kein `external_id`, damit es sauber von gespiegelten Projekten getrennt bleibt.
+ */
+export async function createProject(input: ProjectInsert): Promise<Project> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({ ...input, source: 'intern', is_system: false })
+    .select()
+    .single()
+  if (error) throw error
+  return data
 }
 
 export async function updateProject(id: string, patch: ProjectUpdate): Promise<Project> {

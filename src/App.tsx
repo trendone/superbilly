@@ -101,7 +101,7 @@ export default function App() {
       </header>
       <main className="main">
         {tab === 'raster' && <WeekGrid initialMonday={jumpWeek} />}
-        {tab === 'projekte' && <Projects />}
+        {tab === 'projekte' && <Projects isAdmin={isAdmin} />}
         {tab === 'neu' && <NewProjects />}
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'auswertung' && (

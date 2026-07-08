@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  createProject,
   deleteProject,
   fetchProjectDetail,
   fetchProjectsView,
@@ -34,9 +35,10 @@ function fmtDate(iso: string | null): string {
   return iso ? dateFmt.format(new Date(`${iso}T00:00:00`)) : '—'
 }
 
-export default function Projects() {
+export default function Projects({ isAdmin = false }: { isAdmin?: boolean }) {
   const [view, setView] = useState<ProjectsView | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Filter
@@ -86,6 +88,31 @@ export default function Projects() {
           load()
         }}
       />
+    )
+  }
+
+  if (creating) {
+    return (
+      <div className="dash">
+        <button className="btn-ghost back-btn" onClick={() => setCreating(false)}>
+          ← Alle Projekte
+        </button>
+        <h2 className="proj-head-name">Internes Projekt anlegen</h2>
+        <p className="hint">
+          ℹ️ Kundenprojekte werden automatisch über Zoho angelegt und sollten <b>nicht</b> von
+          Hand erfasst werden. Nutze diese Funktion nur für interne Projekte (z. B. eigene
+          Vorhaben, Templates), die es in Zoho nicht gibt.
+        </p>
+        <ProjectForm
+          onCancel={() => setCreating(false)}
+          onSave={async (patch) => {
+            const p = await createProject(patch)
+            setCreating(false)
+            load()
+            setSelected(p.id)
+          }}
+        />
+      </div>
     )
   }
 
@@ -194,6 +221,15 @@ export default function Projects() {
           </button>
         ))}
       </div>
+
+      {isAdmin && (
+        <div className="proj-add-fallback">
+          <button className="btn-ghost" onClick={() => setCreating(true)}>
+            + Internes Projekt anlegen
+          </button>
+          <span className="dim">Kundenprojekte laufen über Zoho</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -521,12 +557,12 @@ export function ProjectDetailView({ projectId, onBack }: { projectId: string; on
 
 // ---------- Projekt-Bearbeitungsformular ----------
 
-function ProjectForm({
+export function ProjectForm({
   project,
   onSave,
   onCancel,
 }: {
-  project: Project
+  project?: Project
   onSave: (patch: {
     name: string
     client: string | null
@@ -540,20 +576,20 @@ function ProjectForm({
   }) => Promise<void>
   onCancel: () => void
 }) {
-  const [name, setName] = useState(project.name)
-  const [client, setClient] = useState(project.client ?? '')
-  const [status, setStatus] = useState(project.status)
-  const [color, setColor] = useState(project.color ?? '#7c6dfa')
-  const [start, setStart] = useState(project.start_date ?? '')
-  const [end, setEnd] = useState(project.end_date ?? '')
+  const [name, setName] = useState(project?.name ?? '')
+  const [client, setClient] = useState(project?.client ?? '')
+  const [status, setStatus] = useState(project?.status ?? 'aktiv')
+  const [color, setColor] = useState(project?.color ?? '#7c6dfa')
+  const [start, setStart] = useState(project?.start_date ?? '')
+  const [end, setEnd] = useState(project?.end_date ?? '')
   const [budgetDays, setBudgetDays] = useState(
-    project.budget_days != null ? String(project.budget_days) : '',
+    project?.budget_days != null ? String(project.budget_days) : '',
   )
   const [budgetEur, setBudgetEur] = useState(
-    project.budget_eur != null ? String(project.budget_eur) : '',
+    project?.budget_eur != null ? String(project.budget_eur) : '',
   )
   const [dayRate, setDayRate] = useState(
-    project.day_rate_eur != null ? String(project.day_rate_eur) : '',
+    project?.day_rate_eur != null ? String(project.day_rate_eur) : '',
   )
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
