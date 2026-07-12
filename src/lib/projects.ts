@@ -25,6 +25,9 @@ export interface ProjectBooking {
 
 export interface ProjectDetail {
   project: Project
+  /** Verknüpftes Zoho-Projekt (source='zoho'), falls dieses Projekt manuell damit
+   *  zusammengeführt wurde. Meilensteine/Buchungen/Budget sind bereits gemerged. */
+  linkedProject: Project | null
   milestones: Milestone[]
   bookings: ProjectBooking[]
   employees: { id: string; name: string }[]
@@ -43,12 +46,22 @@ export async function fetchProjects(): Promise<Project[]> {
   return data
 }
 
+/** Reduziertes verknüpftes Zoho-Projekt für Listen-/Kartenanzeige. */
+export interface LinkedProjectRef {
+  id: string
+  name: string
+  offer_number: string | null
+  budget_eur: number | null
+  status: string
+}
+
 /** Projekt + abgeleitete Filter-Merkmale für die Projektliste. */
 export interface ProjectRow extends Project {
   employeeIds: string[] // Mitarbeitende mit Buchung auf diesem Projekt
   categoryLabel: string | null // dominante Leistungskategorie (z. B. „Fokus Keynotes")
   categoryKtr: string | null
   hasBookings: boolean // mind. eine Planungsbuchung vorhanden ("noch zu verplanen", wenn false)
+  linkedProject: LinkedProjectRef | null // manuell zusammengeführtes Zoho-Projekt (Karte davon ausgeblendet)
 }
 
 export interface ProjectsView {
@@ -92,44 +105,86 @@ export async function fetchProjectsView(): Promise<ProjectsView> {
     prodCount.set(m.project_id, pm)
   }
 
-  const projects: ProjectRow[] = proj.data.map((p) => {
-    const pm = prodCount.get(p.id)
-    const dom = pm ? [...pm.entries()].sort((a, b) => b[1] - a[1])[0][0] : null
-    const cat = parseProduct(dom)
-    return {
-      ...p,
-      employeeIds: [...(empByProject.get(p.id) ?? [])],
-      categoryLabel: cat?.label ?? null,
-      categoryKtr: cat?.ktr ?? null,
-      hasBookings: bookedProjectIds.has(p.id),
-    }
-  })
+  // Manuelle Zusammenführung: internes Projekt „beansprucht" ein Zoho-Projekt.
+  // Die beanspruchten Zoho-Karten werden ausgeblendet (nur noch eine Karte je
+  // realem Projekt); ihr Budget/ihre Kategorie erscheint am internen Projekt.
+  const byId = new Map(proj.data.map((p) => [p.id, p]))
+  const linkedTargetIds = new Set(
+    proj.data.map((p) => p.linked_project_id).filter((v): v is string => !!v),
+  )
+
+  const projects: ProjectRow[] = proj.data
+    .filter((p) => !linkedTargetIds.has(p.id))
+    .map((p) => {
+      const linked = p.linked_project_id ? byId.get(p.linked_project_id) ?? null : null
+
+      // Kategorie aus eigenen + (bei Verknüpfung) den Zoho-Meilensteinen ableiten.
+      const merged = new Map<string, number>()
+      for (const src of [p.id, linked?.id]) {
+        if (!src) continue
+        for (const [prod, n] of prodCount.get(src) ?? []) merged.set(prod, (merged.get(prod) ?? 0) + n)
+      }
+      const dom = merged.size ? [...merged.entries()].sort((a, b) => b[1] - a[1])[0][0] : null
+      const cat = parseProduct(dom)
+
+      return {
+        ...p,
+        // Budget des Zoho-Deals einblenden, falls das interne Projekt keines hat.
+        budget_eur: p.budget_eur ?? linked?.budget_eur ?? null,
+        employeeIds: [...(empByProject.get(p.id) ?? [])],
+        categoryLabel: cat?.label ?? null,
+        categoryKtr: cat?.ktr ?? null,
+        hasBookings: bookedProjectIds.has(p.id),
+        linkedProject: linked
+          ? {
+              id: linked.id,
+              name: linked.name,
+              offer_number: linked.offer_number,
+              budget_eur: linked.budget_eur,
+              status: linked.status,
+            }
+          : null,
+      }
+    })
 
   return { projects, employees: emp.data }
 }
 
-/** Ein Projekt mit Meilensteinen, Buchungen und Mitarbeiter-Namen. */
+/** Ein Projekt mit Meilensteinen, Buchungen und Mitarbeiter-Namen. Bei einer
+ *  manuellen Zoho-Verknüpfung werden Meilensteine und Buchungen des verknüpften
+ *  Zoho-Projekts mit eingemischt (Zusammenführungs-Ansicht). */
 export async function fetchProjectDetail(projectId: string): Promise<ProjectDetail> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
-  const [proj, ms, book, emp] = await Promise.all([
-    supabase.from('projects').select('*').eq('id', projectId).single(),
+  const proj = await supabase.from('projects').select('*').eq('id', projectId).single()
+  if (proj.error) throw proj.error
+  const project = proj.data
+
+  let linkedProject: Project | null = null
+  if (project.linked_project_id) {
+    const lp = await supabase.from('projects').select('*').eq('id', project.linked_project_id).single()
+    if (!lp.error) linkedProject = lp.data
+  }
+
+  // Meilensteine/Buchungen über beide Projekt-IDs (interne + verknüpfte Zoho-Zeile).
+  const ids = linkedProject ? [projectId, linkedProject.id] : [projectId]
+  const [ms, book, emp] = await Promise.all([
     supabase
       .from('milestones')
       .select('*')
-      .eq('project_id', projectId)
+      .in('project_id', ids)
       .order('due_date', { nullsFirst: false }),
     supabase
       .from('bookings')
       .select('employee_id, start_date, end_date, budget')
-      .eq('project_id', projectId),
+      .in('project_id', ids),
     supabase.from('employees').select('id, name').order('name'),
   ])
-  if (proj.error) throw proj.error
   if (ms.error) throw ms.error
   if (book.error) throw book.error
   if (emp.error) throw emp.error
   return {
-    project: proj.data,
+    project,
+    linkedProject,
     milestones: ms.data,
     bookings: book.data as ProjectBooking[],
     employees: emp.data,
@@ -169,4 +224,49 @@ export async function deleteProject(id: string): Promise<void> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
   const { error } = await supabase.from('projects').delete().eq('id', id)
   if (error) throw error
+}
+
+// ── Manuelle Zoho-Verknüpfung (nur Admin, Gating im Frontend) ────────────────
+
+/** Verknüpfbares Zoho-Projekt für die Auswahl beim Zusammenführen. */
+export interface LinkableProject {
+  id: string
+  name: string
+  client: string | null
+  status: string
+  budget_eur: number | null
+  offer_number: string | null
+}
+
+/**
+ * Kandidaten zum Verknüpfen: gespiegelte Zoho-Projekte, die weder verloren noch
+ * bereits von einem anderen Projekt beansprucht sind. `excludeId` blendet das
+ * eigene Projekt aus (ein Projekt kann sich nicht mit sich selbst verknüpfen).
+ */
+export async function fetchLinkableZohoProjects(excludeId?: string): Promise<LinkableProject[]> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const [zoho, linked] = await Promise.all([
+    supabase
+      .from('projects')
+      .select('id, name, client, status, budget_eur, offer_number')
+      .eq('source', 'zoho')
+      .eq('is_system', false)
+      .neq('status', 'verloren')
+      .order('name'),
+    supabase.from('projects').select('linked_project_id').not('linked_project_id', 'is', null),
+  ])
+  if (zoho.error) throw zoho.error
+  if (linked.error) throw linked.error
+  const claimed = new Set(linked.data.map((r) => r.linked_project_id as string))
+  return zoho.data.filter((p) => p.id !== excludeId && !claimed.has(p.id))
+}
+
+/** Verknüpft ein Nicht-Zoho-Projekt mit einem Zoho-Projekt (Zusammenführung). */
+export async function linkProject(projectId: string, zohoProjectId: string): Promise<Project> {
+  return updateProject(projectId, { linked_project_id: zohoProjectId })
+}
+
+/** Hebt eine bestehende Zoho-Verknüpfung wieder auf. */
+export async function unlinkProject(projectId: string): Promise<Project> {
+  return updateProject(projectId, { linked_project_id: null })
 }

@@ -685,6 +685,51 @@ code {
 .proj-tag-intern { background: #f1f5f9; color: var(--muted); }
 .proj-tag-new { background: #dcfce7; color: #15803d; }
 
+/* Zoho-Verknüpfung (Zusammenführung interner ↔ Zoho-Projekte) */
+.zoho-link { margin: 4px 0 16px; }
+.zoho-link-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #3730a3;
+}
+.zoho-link-picker {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 10px;
+  padding: 12px;
+}
+.zoho-link-picker-head { display: flex; gap: 8px; }
+.zoho-link-picker-head input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.zoho-link-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 320px; overflow-y: auto; }
+.zoho-link-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.zoho-link-option:hover { background: #f1f5f9; border-color: var(--accent); }
+.zoho-link-option-name { font-weight: 600; font-size: 14px; }
+.zoho-link-option-meta { font-size: 12px; color: var(--muted); }
+
 /* Status-Pill (geteilt: Projekt- und Rechnungsstatus) */
 .status-pill {
   display: inline-block;

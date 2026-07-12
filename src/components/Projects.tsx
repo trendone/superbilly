@@ -2,10 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   createProject,
   deleteProject,
+  fetchLinkableZohoProjects,
   fetchProjectDetail,
   fetchProjectsView,
+  linkProject,
   PROJECT_STATES,
+  unlinkProject,
   updateProject,
+  type LinkableProject,
   type Project,
   type ProjectDetail,
   type ProjectsView,
@@ -83,6 +87,7 @@ export default function Projects({ isAdmin = false }: { isAdmin?: boolean }) {
     return (
       <ProjectDetailView
         projectId={selected}
+        isAdmin={isAdmin}
         onBack={() => {
           setSelected(null)
           load()
@@ -215,6 +220,11 @@ export default function Projects({ isAdmin = false }: { isAdmin?: boolean }) {
                 ) : (
                   <span className="proj-tag proj-tag-intern">Intern</span>
                 )}
+                {p.linkedProject && (
+                  <span className="proj-tag" title={`Zusammengeführt mit Zoho-Projekt „${p.linkedProject.name}"`}>
+                    🔗 Zoho
+                  </span>
+                )}
                 {p.categoryLabel && <span className="proj-tag">{p.categoryLabel}</span>}
                 {p.budget_eur != null && <span>{eur.format(Number(p.budget_eur))}</span>}
                 {p.budget_days != null && <span>{Number(p.budget_days)} Tage</span>}
@@ -236,12 +246,21 @@ export default function Projects({ isAdmin = false }: { isAdmin?: boolean }) {
   )
 }
 
-export function ProjectDetailView({ projectId, onBack }: { projectId: string; onBack: () => void }) {
+export function ProjectDetailView({
+  projectId,
+  onBack,
+  isAdmin = false,
+}: {
+  projectId: string
+  onBack: () => void
+  isAdmin?: boolean
+}) {
   const [detail, setDetail] = useState<ProjectDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [msAdding, setMsAdding] = useState(false)
   const [msEditing, setMsEditing] = useState<string | null>(null)
+  const [linking, setLinking] = useState(false)
 
   function load() {
     fetchProjectDetail(projectId)
@@ -301,6 +320,26 @@ export function ProjectDetailView({ projectId, onBack }: { projectId: string; on
     }
   }
 
+  async function onLink(zohoProjectId: string) {
+    try {
+      await linkProject(projectId, zohoProjectId)
+      setLinking(false)
+      load()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  async function onUnlink() {
+    if (!confirm('Zoho-Verknüpfung wirklich aufheben? Budget und Meilensteine des Zoho-Deals werden dann nicht mehr an diesem Projekt angezeigt.'))
+      return
+    try {
+      await unlinkProject(projectId)
+      load()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
   async function onProjectDelete() {
     if (!detail) return
     if (
@@ -328,7 +367,10 @@ export function ProjectDetailView({ projectId, onBack }: { projectId: string; on
     client: p.client,
     is_system: p.is_system,
   }
+  const linked = detail.linkedProject
   const budgetDays = p.budget_days != null ? Number(p.budget_days) : null
+  // Budget des verknüpften Zoho-Deals einblenden, falls intern keines gepflegt ist.
+  const budgetEur = p.budget_eur ?? linked?.budget_eur ?? null
   const pct = budgetDays ? Math.round((totalPlanned / budgetDays) * 100) : null
   const over = pct != null && pct > 100
 
@@ -385,6 +427,38 @@ export function ProjectDetailView({ projectId, onBack }: { projectId: string; on
         </div>
       </div>
 
+      {/* Zoho-Verknüpfung (Zusammenführung interner ↔ Zoho-Projekte) */}
+      {p.source !== 'zoho' && (
+        <section className="zoho-link">
+          {linked ? (
+            <div className="zoho-link-banner">
+              <span>
+                🔗 Zusammengeführt mit Zoho-Projekt <b>{linked.name}</b>
+                {linked.offer_number ? ` (A - ${linked.offer_number})` : ''} – Budget und
+                Meilensteine des Zoho-Deals sind hier eingeblendet.
+              </span>
+              {isAdmin && (
+                <button className="btn-ghost" onClick={onUnlink}>
+                  Verknüpfung lösen
+                </button>
+              )}
+            </div>
+          ) : isAdmin ? (
+            linking ? (
+              <ZohoLinkPicker
+                excludeId={projectId}
+                onPick={onLink}
+                onCancel={() => setLinking(false)}
+              />
+            ) : (
+              <button className="btn-ghost" onClick={() => setLinking(true)}>
+                🔗 Mit Zoho-Projekt verknüpfen
+              </button>
+            )
+          ) : null}
+        </section>
+      )}
+
       {/* Ressourcen */}
       <div className="kpis">
         <div className="kpi">
@@ -397,7 +471,7 @@ export function ProjectDetailView({ projectId, onBack }: { projectId: string; on
         </div>
         <div className="kpi">
           <div className="kpi-label">Budget €</div>
-          <div className="kpi-val">{p.budget_eur != null ? eur.format(Number(p.budget_eur)) : '—'}</div>
+          <div className="kpi-val">{budgetEur != null ? eur.format(Number(budgetEur)) : '—'}</div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Auslastung</div>
@@ -553,6 +627,73 @@ export function ProjectDetailView({ projectId, onBack }: { projectId: string; on
           </>
         )}
       </section>
+    </div>
+  )
+}
+
+// ---------- Zoho-Verknüpfung: Auswahl des Zielprojekts ----------
+
+function ZohoLinkPicker({
+  excludeId,
+  onPick,
+  onCancel,
+}: {
+  excludeId: string
+  onPick: (zohoProjectId: string) => void
+  onCancel: () => void
+}) {
+  const [options, setOptions] = useState<LinkableProject[] | null>(null)
+  const [query, setQuery] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchLinkableZohoProjects(excludeId)
+      .then(setOptions)
+      .catch((e) => setErr((e as Error).message))
+  }, [excludeId])
+
+  const filtered = useMemo(() => {
+    if (!options) return []
+    const q = query.trim().toLowerCase()
+    if (!q) return options
+    return options.filter(
+      (o) =>
+        o.name.toLowerCase().includes(q) ||
+        (o.client ?? '').toLowerCase().includes(q) ||
+        (o.offer_number ?? '').toLowerCase().includes(q),
+    )
+  }, [options, query])
+
+  return (
+    <div className="zoho-link-picker">
+      <div className="zoho-link-picker-head">
+        <input
+          autoFocus
+          placeholder="Zoho-Projekt suchen (Name, Kunde, Angebotsnr.)…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button className="btn-ghost" onClick={onCancel}>
+          Abbrechen
+        </button>
+      </div>
+      {err && <div className="status err">✕ {err}</div>}
+      {!options && !err && <p className="hint">… lädt</p>}
+      {options && filtered.length === 0 && (
+        <p className="hint">Keine passenden (freien) Zoho-Projekte gefunden.</p>
+      )}
+      <div className="zoho-link-list">
+        {filtered.map((o) => (
+          <button key={o.id} className="zoho-link-option" onClick={() => onPick(o.id)}>
+            <span className="zoho-link-option-name">{o.name}</span>
+            <span className="zoho-link-option-meta">
+              {o.client ?? 'Kein Kunde'}
+              {o.offer_number ? ` · A - ${o.offer_number}` : ''}
+              {o.budget_eur != null ? ` · ${eur.format(Number(o.budget_eur))}` : ''}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
