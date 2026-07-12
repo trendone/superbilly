@@ -23,6 +23,17 @@ export type Department = Database['public']['Tables']['departments']['Row']
 // System-Kategorien, die echte Abwesenheit darstellen (mindern die Verfügbarkeit).
 export const ABSENCE_CATEGORIES = ['Urlaub', 'Krank', 'Frei', 'Kurzarbeit'] as const
 
+// Projekt-Status, unter denen ein (Nicht-System-)Projekt eine vorgemerkte,
+// reservierte Ressource ist: aus offenen Zoho-Deals gespiegelt, in der Planung
+// buchbar, aber NICHT auslastungswirksam und nicht committet. 'verloren' =
+// Deal weg, komplett aus Planung/Auswertung ausgeblendet.
+export const RESERVED_STATES = ['angebot', 'verhandlung'] as const
+export const isReservedStatus = (s: string): boolean =>
+  (RESERVED_STATES as readonly string[]).includes(s)
+export const isReservedProject = (p?: { is_system: boolean; status: string } | null): boolean =>
+  !!p && !p.is_system && isReservedStatus(p.status)
+export const isLostProject = (p?: { status: string } | null): boolean => p?.status === 'verloren'
+
 // Stunden pro „Personentag" (für die Umrechnung Ist-Stunden → Tage).
 const HOURS_PER_DAY = 8
 
@@ -243,7 +254,9 @@ export function projectStats(data: AnalyticsData): ProjectStat[] {
     return [...pm.entries()].sort((a, b) => b[1] - a[1])[0][0]
   }
 
-  const projects = data.projects.filter((p) => !p.is_system)
+  // Vorgemerkte (reservierte) und verlorene Projekte sind nicht committet und
+  // fließen nicht in Volumen/Forecast/Auslastung ein.
+  const projects = data.projects.filter((p) => !p.is_system && !isReservedProject(p) && !isLostProject(p))
 
   return projects.map((project) => {
     const tasks = data.bookings.filter((b) => b.project_id === project.id)
@@ -513,6 +526,8 @@ function statForMonth(emp: Employee, data: AnalyticsData, m: MonthWindow): Month
       for (const b of monthBookings) {
         if (b.start_date > iso || b.end_date < iso) continue
         const p = projById.get(b.project_id)
+        // Vorgemerkte/verlorene Buchungen zählen nicht als Auslastung.
+        if (isReservedProject(p) || isLostProject(p)) continue
         const share = Number(b.budget)
         if (isAbsence(p)) absenceDays += share
         else if (p && p.is_system) adminDays += share
@@ -612,6 +627,8 @@ export function monthDetail(emp: Employee, data: AnalyticsData, year: number, mo
       for (const b of monthBookings) {
         if (b.start_date > iso || b.end_date < iso) continue
         const p = projById.get(b.project_id)
+        // Vorgemerkte/verlorene Buchungen tauchen im Auslastungs-Drilldown nicht auf.
+        if (isReservedProject(p) || isLostProject(p)) continue
         const name = p?.name ?? '—'
         const kind: DetailRow['kind'] = isAbsence(p) ? 'absence' : p?.is_system ? 'admin' : 'project'
         const row = acc.get(name) ?? { name, color: p?.color ?? null, days: 0, kind }

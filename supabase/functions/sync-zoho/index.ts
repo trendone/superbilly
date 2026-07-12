@@ -1,7 +1,18 @@
 // ============================================================
 // sync-zoho – Pull-Sync Zoho CRM → projects (read-only Spiegelung)
 //
-// Eine COQL-Abfrage zieht serverseitig gefiltert genau die beauftragten
+// Zwei COQL-Abfragen bilden den gesamten Deal-Lebenszyklus in projects ab:
+//  1) beauftragte Consulting-Angebote (Quotes) → status 'aktiv' (buchbar, regulär)
+//  2) offene Consulting-Deals (Stage 'Angebot verschickt'/'Verhandlungsphase')
+//     → status 'angebot'/'verhandlung' = vorgemerkte Ressource (buchbar, aber
+//     nicht auslastungswirksam; im Raster schraffiert).
+// Beide nutzen die Deal-ID als external_id → der Übergang Reservierung →
+// beauftragt läuft automatisch über on_conflict=external_id (Status wird auf
+// 'aktiv' gehoben, die reservierten Buchungen zählen ab dann normal). Fällt ein
+// Deal aus beiden Stages ohne Beauftragung, wird das Projekt auf 'verloren'
+// gesetzt und verschwindet aus der Planung (Buchungen bleiben erhalten).
+//
+// Die erste Abfrage zieht serverseitig gefiltert die beauftragten
 // Consulting-Angebote samt zugehöriger Deal-Felder:
 //
 //   select Angebotsnummer, Sub_Total, Quote_Stage, Deal_Name,
@@ -39,11 +50,20 @@ interface ProjectRow {
   offer_number: string | null;
   status: string;
   source: string;
+  probability?: number | null;
 }
 
 interface ProjectUpsertRow extends ProjectRow {
   is_new?: true;
 }
+
+// Reservierungs-Status (aus offenen Deal-Stages). Muss mit RESERVED_STATES in
+// src/lib/analytics.ts übereinstimmen.
+const RESERVED_STATES = new Set(["angebot", "verhandlung"]);
+
+// Zoho-Deal-Stage → Projekt-Status für vorgemerkte Ressourcen.
+const stageToStatus = (stage: string | null): string =>
+  stage === "Verhandlungsphase" ? "verhandlung" : "angebot";
 
 async function getAccessToken(): Promise<string> {
   const body = new URLSearchParams({
@@ -114,6 +134,42 @@ async function buildRows(token: string): Promise<ProjectRow[]> {
   return [...byExternal.values()];
 }
 
+// Offene Consulting-Deals (Stage "Angebot verschickt" / "Verhandlungsphase") als
+// vorgemerkte Ressourcen. Dealgetrieben (wie sync-pipeline), external_id = Deal-ID
+// – gleicher Schlüssel wie buildRows, daher matcht der spätere Übergang
+// Reservierung → beauftragt automatisch über on_conflict=external_id.
+async function buildReservationRows(token: string): Promise<ProjectRow[]> {
+  const records = await coql(
+    token,
+    "select id, Deal_Name, Account_Name, Amount, Probability, " +
+      "Closing_Date, Leitungserbringung, Stage from Deals " +
+      "where Stage in ('Angebot verschickt','Verhandlungsphase') " +
+      "and Leistungsbereich = 'Consulting'",
+  );
+
+  const byExternal = new Map<string, ProjectRow>();
+  for (const d of records) {
+    const id = d.id != null ? String(d.id) : null;
+    if (!id) continue;
+    // Datumsregel wie bei beauftragt, aber tolerant: Deals ohne Leistungsdatum
+    // sind vorwärtsgerichtete Pipeline und bleiben; nur klar vergangene fliegen raus.
+    const ed = (d.Leitungserbringung as string | null) ?? null;
+    if (ed && ed < SINCE) continue;
+    byExternal.set(id, {
+      external_id: id,
+      name: (d.Deal_Name as string) ?? "Unbenannt",
+      client: lookupName(d.Account_Name),
+      end_date: ed,
+      budget_eur: d.Amount != null ? Number(d.Amount) : null,
+      offer_number: null,
+      status: stageToStatus((d.Stage as string) ?? null),
+      source: "zoho",
+      probability: d.Probability != null ? Number(d.Probability) : null,
+    });
+  }
+  return [...byExternal.values()];
+}
+
 async function upsertProjects(rows: ProjectUpsertRow[]): Promise<void> {
   if (rows.length === 0) return;
   const r = await fetch(`${env("SUPABASE_URL")}/rest/v1/projects?on_conflict=external_id`, {
@@ -129,10 +185,11 @@ async function upsertProjects(rows: ProjectUpsertRow[]): Promise<void> {
   if (!r.ok) throw new Error(`projects upsert ${r.status}: ${await r.text()}`);
 }
 
-/** external_ids, die schon in der DB stehen – trennt Insert (neu) von Update (bestehend). */
-async function fetchExistingExternalIds(): Promise<Set<string>> {
+/** external_id → status aller gespiegelten Zoho-Projekte. Trennt Insert (neu) von
+ *  Update (bestehend) und liefert den Status für Präzedenz- und Verloren-Logik. */
+async function fetchExistingZohoProjects(): Promise<Map<string, string>> {
   const r = await fetch(
-    `${env("SUPABASE_URL")}/rest/v1/projects?select=external_id&external_id=not.is.null`,
+    `${env("SUPABASE_URL")}/rest/v1/projects?select=external_id,status&source=eq.zoho&external_id=not.is.null`,
     {
       headers: {
         apikey: env("SUPABASE_SERVICE_ROLE_KEY"),
@@ -140,9 +197,31 @@ async function fetchExistingExternalIds(): Promise<Set<string>> {
       },
     },
   );
-  if (!r.ok) throw new Error(`fetch existing external_ids ${r.status}: ${await r.text()}`);
-  const data = (await r.json()) as { external_id: string }[];
-  return new Set(data.map((d) => d.external_id));
+  if (!r.ok) throw new Error(`fetch existing projects ${r.status}: ${await r.text()}`);
+  const data = (await r.json()) as { external_id: string; status: string }[];
+  return new Map(data.map((d) => [d.external_id, d.status]));
+}
+
+/** Setzt vorgemerkte Projekte, deren Deal nicht mehr offen (und nicht beauftragt)
+ *  ist, auf 'verloren'. Buchungen bleiben erhalten; sie verschwinden nur aus der
+ *  Planung, bis der Deal ggf. reaktiviert wird. */
+async function markLost(externalIds: string[]): Promise<void> {
+  if (externalIds.length === 0) return;
+  const list = externalIds.map((id) => `"${id}"`).join(",");
+  const r = await fetch(
+    `${env("SUPABASE_URL")}/rest/v1/projects?source=eq.zoho&external_id=in.(${list})`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: env("SUPABASE_SERVICE_ROLE_KEY"),
+        Authorization: `Bearer ${env("SUPABASE_SERVICE_ROLE_KEY")}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ status: "verloren" }),
+    },
+  );
+  if (!r.ok) throw new Error(`projects mark lost ${r.status}: ${await r.text()}`);
 }
 
 /** Manueller Trigger aus der App: gültige Session eines eingeloggten (@trendone.com) Users. */
@@ -177,8 +256,21 @@ Deno.serve(async (req) => {
   }
   try {
     const token = await getAccessToken();
-    const rows = await buildRows(token);
-    const existing = await fetchExistingExternalIds();
+    const committed = await buildRows(token); // beauftragt → status 'aktiv'
+    const reservationsAll = await buildReservationRows(token); // offen → 'angebot'/'verhandlung'
+    const existing = await fetchExistingZohoProjects(); // external_id → status
+
+    // Präzedenz: taucht dieselbe Deal-ID beauftragt UND offen auf, gewinnt
+    // beauftragt. Bestehende committete Projekte werden nie zur Reservierung
+    // herabgestuft (nur neue oder bereits reservierte dürfen Reservierung sein).
+    const committedIds = new Set(committed.map((r) => r.external_id));
+    const reservations = reservationsAll.filter((r) => {
+      if (committedIds.has(r.external_id)) return false;
+      const st = existing.get(r.external_id);
+      return st === undefined || RESERVED_STATES.has(st);
+    });
+
+    const rows = [...committed, ...reservations];
     const newRows: ProjectUpsertRow[] = [];
     const updateRows: ProjectUpsertRow[] = [];
     for (const row of rows) {
@@ -187,12 +279,23 @@ Deno.serve(async (req) => {
     }
     await upsertProjects(newRows);
     await upsertProjects(updateRows);
+
+    // Verloren: bislang reservierte Projekte, die in diesem Lauf weder offen noch
+    // beauftragt gesehen wurden.
+    const seen = new Set(rows.map((r) => r.external_id));
+    const lost = [...existing.entries()]
+      .filter(([id, st]) => RESERVED_STATES.has(st) && !seen.has(id))
+      .map(([id]) => id);
+    await markLost(lost);
+
     return new Response(
       JSON.stringify({
         ok: true,
         projects_upserted: rows.length,
         projects_new: newRows.length,
         projects_updated: updateRows.length,
+        reservations_synced: reservations.length,
+        reservations_lost: lost.length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

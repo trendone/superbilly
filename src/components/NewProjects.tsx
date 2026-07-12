@@ -117,7 +117,11 @@ export default function NewProjects() {
       {syncResult && (
         <div className="status ok">
           ✓ {syncResult.projects_new} neu · {syncResult.projects_updated} aktualisiert (
-          {syncResult.projects_upserted} beauftragte Consulting-Angebote insgesamt geprüft)
+          {syncResult.projects_upserted} Consulting-Projekte geprüft)
+          {syncResult.reservations_synced != null && (
+            <> · {syncResult.reservations_synced} vorgemerkt
+              {syncResult.reservations_lost ? ` · ${syncResult.reservations_lost} verloren` : ''}</>
+          )}
         </div>
       )}
       {!view && <div className="status pending">… lädt</div>}
@@ -148,6 +152,8 @@ export default function NewProjects() {
             >
               <option value="alle">Alle</option>
               <option value="aktiv">aktiv</option>
+              <option value="angebot">Angebot verschickt</option>
+              <option value="verhandlung">Verhandlungsphase</option>
               <option value="abgeschlossen">abgeschlossen</option>
             </select>
           </label>

@@ -90,6 +90,7 @@ export async function employeeDayLoads(
   endISO: string,
   absenceProjectIds: Set<string>,
   excludeId?: string,
+  reservedProjectIds?: Set<string>,
 ): Promise<Record<string, { work: number; absence: number }>> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
   const { data, error } = await supabase
@@ -103,6 +104,8 @@ export async function employeeDayLoads(
   const loads: Record<string, { work: number; absence: number }> = {}
   for (const b of data) {
     if (b.id === excludeId) continue
+    // Vorgemerkte (reservierte) Buchungen zählen nicht in die Tageslast.
+    if (reservedProjectIds?.has(b.project_id)) continue
     const isAbs = absenceProjectIds.has(b.project_id)
     const d = new Date(`${b.start_date}T00:00:00`)
     const last = new Date(`${b.end_date}T00:00:00`)

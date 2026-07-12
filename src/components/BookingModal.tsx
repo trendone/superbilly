@@ -6,7 +6,7 @@ import {
   type BookingInput,
   type Project,
 } from '../lib/data'
-import { ABSENCE_CATEGORIES, STANDARD_DAY_RATE } from '../lib/analytics'
+import { ABSENCE_CATEGORIES, STANDARD_DAY_RATE, isReservedProject } from '../lib/analytics'
 import { holidayName } from '../lib/holidays'
 import { addDays, formatDay, toISODate } from '../lib/dates'
 
@@ -47,13 +47,18 @@ export default function BookingModal({
   const [booked, setBooked] = useState<number | null>(null)
   const [dayWarn, setDayWarn] = useState<{ date: string; total: number; avail: number } | null>(null)
 
-  // Projekte vs. System-Kategorien für die gruppierte Auswahl.
-  const { real, system } = useMemo(() => {
-    const real: Project[] = []
+  // Feste Projekte, vorgemerkte (reservierte) Deals und System-Kategorien für
+  // die gruppierte Auswahl.
+  const { firm, reserved, system } = useMemo(() => {
+    const firm: Project[] = []
+    const reserved: Project[] = []
     const system: Project[] = []
-    for (const p of [...projects].sort((a, b) => a.name.localeCompare(b.name)))
-      (p.is_system ? system : real).push(p)
-    return { real, system }
+    for (const p of [...projects].sort((a, b) => a.name.localeCompare(b.name))) {
+      if (p.is_system) system.push(p)
+      else if (isReservedProject(p)) reserved.push(p)
+      else firm.push(p)
+    }
+    return { firm, reserved, system }
   }, [projects])
 
   const absenceIds = useMemo(
@@ -66,8 +71,14 @@ export default function BookingModal({
     [projects],
   )
 
+  const reservedIds = useMemo(
+    () => new Set(projects.filter((p) => isReservedProject(p)).map((p) => p.id)),
+    [projects],
+  )
+
   const selected = projects.find((p) => p.id === projectId)
   const isAbsenceProject = !!projectId && absenceIds.has(projectId)
+  const isReservedSel = !!projectId && reservedIds.has(projectId)
 
   // Budget-Tage des gewählten Projekts (explizit oder aus € / Tagessatz abgeleitet).
   const budgetDays = useMemo(() => {
@@ -98,8 +109,9 @@ export default function BookingModal({
   useEffect(() => {
     let cancelled = false
     setDayWarn(null)
-    if (!projectId || isAbsenceProject || !start || !end || end < start) return
-    employeeDayLoads(employeeId, start, end, absenceIds, initial?.id)
+    // Reservierte Buchungen sind nicht auslastungswirksam → keine Überbuchungswarnung.
+    if (!projectId || isAbsenceProject || isReservedSel || !start || !end || end < start) return
+    employeeDayLoads(employeeId, start, end, absenceIds, initial?.id, reservedIds)
       .then((loads) => {
         if (cancelled) return
         let worst: { date: string; total: number; avail: number } | null = null
@@ -125,7 +137,7 @@ export default function BookingModal({
     return () => {
       cancelled = true
     }
-  }, [projectId, isAbsenceProject, start, end, budget, employeeId, absenceIds, initial?.id])
+  }, [projectId, isAbsenceProject, isReservedSel, start, end, budget, employeeId, absenceIds, reservedIds, initial?.id])
 
   function onStartChange(v: string) {
     setStart(v)
@@ -184,9 +196,19 @@ export default function BookingModal({
                     ))}
                   </optgroup>
                 )}
-                {real.length > 0 && (
+                {firm.length > 0 && (
                   <optgroup label="Projekte">
-                    {real.map((p) => (
+                    {firm.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.client ? ` (${p.client})` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {reserved.length > 0 && (
+                  <optgroup label="Vorgemerkt (Angebot / Verhandlung)">
+                    {reserved.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                         {p.client ? ` (${p.client})` : ''}
@@ -235,6 +257,13 @@ export default function BookingModal({
             />
             Workshop
           </label>
+
+          {isReservedSel && (
+            <div className="budget-info resv">
+              ⧉ Vorgemerkte Ressource – zählt nicht als Auslastung. Wird der Deal beauftragt,
+              übernimmt der Zoho-Sync die Buchung automatisch als regulär.
+            </div>
+          )}
 
           {dayWarn && (
             <div className="budget-info over">
