@@ -7,7 +7,13 @@ export type Project = Database['public']['Tables']['projects']['Row']
 export type ProjectUpdate = Database['public']['Tables']['projects']['Update']
 export type ProjectInsert = Database['public']['Tables']['projects']['Insert']
 
-export const PROJECT_STATES = ['akquise', 'aktiv', 'pausiert', 'abgeschlossen'] as const
+// Reservierungs-Helfer (Single Source of Truth in analytics.ts) hier re-exportiert,
+// damit UI-/Datenmodule sie aus der Projekt-Schicht beziehen können.
+export { RESERVED_STATES, isReservedStatus, isReservedProject, isLostProject } from './analytics'
+
+export const PROJECT_STATES = [
+  'akquise', 'aktiv', 'pausiert', 'abgeschlossen', 'angebot', 'verhandlung', 'verloren',
+] as const
 
 /** Buchung in reduzierter Form für die Ressourcen-Aggregation. */
 export interface ProjectBooking {
@@ -31,6 +37,7 @@ export async function fetchProjects(): Promise<Project[]> {
     .from('projects')
     .select('*')
     .eq('is_system', false)
+    .neq('status', 'verloren')
     .order('name')
   if (error) throw error
   return data
@@ -57,7 +64,7 @@ export interface ProjectsView {
 export async function fetchProjectsView(): Promise<ProjectsView> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
   const [proj, book, ms, emp] = await Promise.all([
-    supabase.from('projects').select('*').eq('is_system', false).order('name'),
+    supabase.from('projects').select('*').eq('is_system', false).neq('status', 'verloren').order('name'),
     fetchAll<{ project_id: string; employee_id: string | null }>('bookings', 'project_id, employee_id'),
     supabase.from('milestones').select('project_id, product'),
     supabase.from('employees').select('id, name').order('name'),

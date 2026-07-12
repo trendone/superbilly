@@ -106,7 +106,8 @@ projects (
   id          uuid pk,
   name        text not null,
   color       text,
-  status      text default 'aktiv',   -- akquise|aktiv|pausiert|abgeschlossen
+  status      text default 'aktiv',   -- akquise|aktiv|pausiert|abgeschlossen|angebot|verhandlung|verloren
+                                       -- angebot/verhandlung = vorgemerkte Ressource (offener Deal), verloren = Deal weg
   client      text,                    -- Kunde (aus Zoho Account)
   start_date  date,
   end_date    date,
@@ -292,7 +293,25 @@ Das Fundament steht; die v2.3-Migration ist klein und überschneidungsfrei.
 - **Zwei Modi**: `sync-zoho` (cron, Pull) + `zoho-webhook` (Zoho-Workflow
   „Closed Won" → sofortiges Anlegen).
 - **Pipeline-Forecast (Killer-Feature)**: offene Deals als **vorläufige, weiche**
-  Ressourcennachfrage (schraffiert, nach `probability` gewichtet).
+  Ressourcennachfrage (schraffiert, nach `probability` gewichtet). Aggregierte,
+  gewichtete Lens über `pipeline_deals` (s. §4.4-Historie / v2.2).
+- **Vorgemerkte Ressourcen (Deal-Lebenszyklus in `projects`, v2.4):** `sync-zoho` spiegelt
+  **beide** offenen Stages (`Angebot verschickt`, `Verhandlungsphase`)
+  zusätzlich als Projekte mit Status `angebot`/`verhandlung`. Diese sind im
+  Planungsraster **buchbar**, gelten aber als **vorgemerkt**: schraffierte Kachel,
+  **zählt nicht als Auslastung** und nicht als committetes Volumen/Forecast.
+  - **Automatische Übernahme:** wechselt der Deal auf `Beauftragt`, hebt der nächste
+    Sync den Status über `on_conflict=external_id` (Deal-ID) auf `aktiv`. Die
+    bereits vorhandenen Buchungen zählen ab dann als reguläre Buchungen – ohne
+    Migration, weil „reserviert" allein aus dem Projektstatus abgeleitet wird.
+  - **Verloren:** verlässt ein Deal beide Stages ohne Beauftragung, setzt der Sync
+    den Status auf `verloren`; die Reservierungen verschwinden aus der Planung, die
+    Buchungen bleiben in der DB (Reaktivierung möglich). Bestehende `aktiv`-Projekte
+    werden nie herabgestuft.
+  - **Verhältnis zur Pipeline-Forecast:** dieselben offenen Deals erscheinen weiter
+    in der gewichteten Pipeline-Forecast (`pipeline_deals`). Da Reservierungen
+    bewusst nicht in die Auslastung einfließen, entsteht keine harte Doppelzählung;
+    beide sind komplementäre Sichten (konkrete Planung vs. gewichtete Aggregat-Last).
 
 ### 4.5 Konnektor Mite (Ist-Zeiterfassung, read-only)
 - **Auth**: API-Key im Header `X-MiteApiKey`, Account-Subdomain
@@ -461,6 +480,17 @@ fürs Controlling (v3.1).
 - Auswertung: Spalte „Ist (Mite)" + „Δ Soll/Ist"; Ist-Zeit pro Leistungsart
 - Voraussetzungen: v2.1 (liefert `offer_number`) · Risiko: gering–mittel
   (Restmenge nummernloser Einträge, Mapping-Pflege)
+
+### v2.4 – Vorgemerkte Ressourcen ✅ LIVE (2026-07-12)
+- offene Consulting-Deals (`Angebot verschickt`/`Verhandlungsphase`) werden von
+  `sync-zoho` zusätzlich als Projekte (`status` `angebot`/`verhandlung`) gespiegelt und
+  sind im Raster **buchbar**, aber vorgemerkt: schraffierte Kachel, **keine Auslastung**,
+  nicht committet (Auswertung blendet sie aus).
+- „reserviert" ist aus dem Projektstatus abgeleitet (kein Feld am Booking) → Übergang
+  auf `aktiv` bei Beauftragung übernimmt die Buchungen automatisch. Deal weg → `verloren`
+  (aus Planung ausgeblendet, Buchungen bleiben). Migration erweitert den
+  `projects_status_check`-Constraint.
+- Voraussetzungen: v2.1 (sync-zoho) · Risiko: gering–mittel (Zoho-Stage-Semantik)
 
 ### v3.0 – PM-Kern: Arbeitspakete
 - `workpackages`, Buchungen hängen an Paketen, Soll/Ist pro Paket

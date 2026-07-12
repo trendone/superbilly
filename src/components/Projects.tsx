@@ -147,6 +147,8 @@ export default function Projects({ isAdmin = false }: { isAdmin?: boolean }) {
             >
               <option value="alle">Alle</option>
               <option value="aktiv">aktiv</option>
+              <option value="angebot">Angebot verschickt</option>
+              <option value="verhandlung">Verhandlungsphase</option>
               <option value="abgeschlossen">abgeschlossen</option>
             </select>
           </label>

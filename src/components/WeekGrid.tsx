@@ -11,7 +11,7 @@ import {
 } from '../lib/data'
 import { addDays, dayLabels, formatDay, isoWeek, mondayOf, toISODate } from '../lib/dates'
 import { holidayName } from '../lib/holidays'
-import { ABSENCE_CATEGORIES } from '../lib/analytics'
+import { ABSENCE_CATEGORIES, isReservedProject, isLostProject } from '../lib/analytics'
 import BookingModal from './BookingModal'
 
 // Kachelfarben im Planungsraster (kategoriebasiert, unabhängig von projects.color):
@@ -123,11 +123,20 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
 
   const isAbsence = (p: Project | undefined) =>
     !!p && p.is_system && (ABSENCE_CATEGORIES as readonly string[]).includes(p.name)
+  // Vorgemerkte (reservierte) Buchung: Projekt aus offenem Zoho-Deal, buchbar aber
+  // nicht auslastungswirksam (schraffiert dargestellt).
+  const isReserved = (p: Project | undefined) => isReservedProject(p)
 
+  // Buchungen des Tages – verlorene Deals werden ausgeblendet (Buchung bleibt in
+  // der DB, taucht aber nicht mehr im Raster auf).
   function bookingsFor(empId: string, day: Date): Booking[] {
     const iso = toISODate(day)
     return (data?.bookings ?? []).filter(
-      (b) => b.employee_id === empId && b.start_date <= iso && b.end_date >= iso,
+      (b) =>
+        b.employee_id === empId &&
+        b.start_date <= iso &&
+        b.end_date >= iso &&
+        !isLostProject(projById.get(b.project_id)),
     )
   }
 
@@ -140,10 +149,13 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
     let productive = 0
     let absence = 0
     let admin = 0
+    let reserved = 0
     for (const day of days) {
       for (const b of bookingsFor(empId, day)) {
         const p = projById.get(b.project_id)
-        if (isAbsence(p)) absence += Number(b.budget)
+        // Vorgemerkt: zählt NICHT als Auslastung, nur separat als Hinweis.
+        if (isReserved(p)) reserved += Number(b.budget)
+        else if (isAbsence(p)) absence += Number(b.budget)
         else if (p?.is_system) admin += Number(b.budget)
         else productive += Number(b.budget)
       }
@@ -156,6 +168,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
       productive: Math.round(productive * 10) / 10,
       absence: Math.round(absence * 10) / 10,
       admin: Math.round(admin * 10) / 10,
+      reserved: Math.round(reserved * 10) / 10,
       avail: Math.round(avail * 10) / 10,
       pct,
     }
@@ -169,6 +182,8 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
     let absence = 0
     for (const b of bookingsFor(empId, day)) {
       const p = projById.get(b.project_id)
+      // Vorgemerkte Buchungen lösen keine Überbuchungswarnung aus.
+      if (isReserved(p)) continue
       if (isAbsence(p)) absence += Number(b.budget)
       else work += Number(b.budget)
     }
@@ -316,6 +331,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
                     {cap.productive} / {cap.avail} Tage · {cap.pct}%
                     {cap.absence > 0 && <span className="emp-abs"> · {cap.absence} T abw.</span>}
                     {cap.admin > 0 && <span className="emp-abs"> · {cap.admin} T Admin</span>}
+                    {cap.reserved > 0 && <span className="emp-resv"> · {cap.reserved} T vorgemerkt</span>}
                   </div>
                   <div className="cap-bar">
                     <span
@@ -347,12 +363,23 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
                     {bookingsFor(emp.id, day).map((b) => {
                       const p = projById.get(b.project_id)
                       const color = tileColor(p, b.is_workshop)
+                      const reserved = isReserved(p)
                       return (
                         <div
                           key={b.id}
-                          className="bk"
-                          style={{ borderLeftColor: color, background: `${color}22` }}
-                          title={b.locked ? `${p?.name ?? ''} (gesperrt)` : p?.name}
+                          className={`bk${reserved ? ' bk-reserved' : ''}`}
+                          style={{
+                            borderLeftColor: color,
+                            background: `${color}22`,
+                            ['--bk-hatch' as string]: color,
+                          }}
+                          title={
+                            reserved
+                              ? `${p?.name ?? ''} — vorgemerkt (${p?.status})`
+                              : b.locked
+                                ? `${p?.name ?? ''} (gesperrt)`
+                                : p?.name
+                          }
                           onClick={(e) => {
                             e.stopPropagation()
                             openEdit(b, emp.name)
@@ -360,7 +387,9 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
                         >
                           <div className="bk-name">{p?.name ?? '—'}</div>
                           <div className="bk-sub">
-                            {b.note ?? (Number(b.budget) === 0.5 ? '½ Tag' : '1 Tag')}
+                            {reserved
+                              ? 'vorgemerkt'
+                              : (b.note ?? (Number(b.budget) === 0.5 ? '½ Tag' : '1 Tag'))}
                           </div>
                         </div>
                       )

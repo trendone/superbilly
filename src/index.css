@@ -196,6 +196,7 @@ code {
 .week-toggle button.active { background: #eef2ff; color: var(--accent); font-weight: 600; }
 .gh.week-sep, .gc.week-sep { border-left: 2px solid #cbd5e1; }
 .emp-abs { color: var(--amber); }
+.emp-resv { color: #6366f1; }
 
 /* Scroll-Wrapper trägt Rahmen/Radius/Overflow – NICHT .grid selbst, sonst
    würde .grid die Spalten clippen und die sticky-Spalte bräche (iOS Safari). */
@@ -288,6 +289,29 @@ code {
 }
 .bk-name { font-size: 12px; font-weight: 600; line-height: 1.2; }
 .bk-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+/* Vorgemerkte (reservierte) Buchung – schraffiert, gestrichelter Rand. Der Hatch
+   nutzt die inline gesetzte Kategoriefarbe (--bk-hatch); als Overlay über ::after,
+   damit die inline background-Farbe der Kachel nicht überschrieben wird. */
+.bk-reserved {
+  position: relative;
+  overflow: hidden;
+  border-left-style: dashed;
+}
+.bk-reserved::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--bk-hatch, #64748b) 28%, transparent) 0 4px,
+    transparent 4px 9px
+  );
+}
+.bk-reserved .bk-name,
+.bk-reserved .bk-sub { position: relative; z-index: 1; }
+.bk-reserved .bk-sub { font-style: italic; }
 
 /* ───────────── Tabs (Topbar-Navigation) ───────────── */
 .tabs { display: flex; gap: 4px; margin-left: 18px; align-self: center; }
@@ -676,6 +700,9 @@ code {
 .status-pill.st-aktiv { background: var(--ok-bg); color: var(--ok-fg); }
 .status-pill.st-pausiert { background: #fef9c3; color: #a16207; }
 .status-pill.st-abgeschlossen { background: #e2e8f0; color: #475569; }
+.status-pill.st-angebot { background: #e0e7ff; color: #4338ca; }
+.status-pill.st-verhandlung { background: #ede9fe; color: #6d28d9; }
+.status-pill.st-verloren { background: #fee2e2; color: #b91c1c; }
 .status-pill.st-offen { background: #fff7ed; color: #c2410c; }
 .status-pill.st-gestellt { background: #eff6ff; color: #1d4ed8; }
 .status-pill.st-bezahlt { background: var(--ok-bg); color: var(--ok-fg); }
@@ -1173,6 +1200,7 @@ code {
 }
 .budget-info.ok { background: rgba(74, 222, 128, 0.12); color: #15803d; }
 .budget-info.over { background: rgba(248, 113, 113, 0.14); color: var(--red, #dc2626); }
+.budget-info.resv { background: rgba(99, 102, 241, 0.12); color: #4338ca; }
 .btn-danger {
   border: 1px solid #fecaca;
   background: #fef2f2;

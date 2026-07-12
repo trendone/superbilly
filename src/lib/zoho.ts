@@ -5,6 +5,8 @@ export interface ZohoSyncResult {
   projects_upserted: number
   projects_new: number
   projects_updated: number
+  reservations_synced?: number
+  reservations_lost?: number
   error?: string
 }
 
