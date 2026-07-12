@@ -414,6 +414,7 @@ export type Database = {
           id: string
           is_new: boolean
           is_system: boolean
+          linked_project_id: string | null
           name: string
           offer_number: string | null
           probability: number | null
@@ -433,6 +434,7 @@ export type Database = {
           id?: string
           is_new?: boolean
           is_system?: boolean
+          linked_project_id?: string | null
           name: string
           offer_number?: string | null
           probability?: number | null
@@ -452,6 +454,7 @@ export type Database = {
           id?: string
           is_new?: boolean
           is_system?: boolean
+          linked_project_id?: string | null
           name?: string
           offer_number?: string | null
           probability?: number | null
