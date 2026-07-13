@@ -5,11 +5,12 @@ import Projects from './components/Projects'
 import NewProjects from './components/NewProjects'
 import Analytics from './components/Analytics'
 import Admin from './components/Admin'
+import About from './components/About'
 import Login from './components/Login'
 import { supabaseConfigured } from './lib/supabase'
 import { signOut, useSession, useRole } from './lib/auth'
 
-type Tab = 'raster' | 'projekte' | 'neu' | 'dashboard' | 'auswertung' | 'admin'
+type Tab = 'raster' | 'projekte' | 'neu' | 'dashboard' | 'auswertung' | 'admin' | 'about'
 
 export default function App() {
   const { session, loading } = useSession()
@@ -91,6 +92,12 @@ export default function App() {
               Verwaltung
             </button>
           )}
+          <button
+            className={`tab${tab === 'about' ? ' active' : ''}`}
+            onClick={() => setTab('about')}
+          >
+            About
+          </button>
         </nav>
         <div className="topbar-right">
           <span className="user-email">{email}</span>
@@ -108,6 +115,7 @@ export default function App() {
           <Analytics onOpenWeek={(d) => { setJumpWeek(d); setTab('raster') }} />
         )}
         {tab === 'admin' && isAdmin && <Admin currentEmail={email} />}
+        {tab === 'about' && <About />}
       </main>
     </div>
   )
