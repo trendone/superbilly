@@ -8,7 +8,7 @@
 //   select id, Deal_Name, Account_Name, Amount, Probability,
 //          Closing_Date, Leitungserbringung, Stage
 //   from Deals
-//   where Stage in ('Angebot verschickt','Verhandlungsphase')
+//   where Stage in ('Angebot verschickt','Angebot nachgefasst','Verhandlungsphase')
 //     and Leistungsbereich = 'Consulting'
 //
 // COQL akzeptiert die deutschen Picklist-Werte direkt (wie Quote_Stage in
@@ -78,7 +78,7 @@ async function buildRows(token: string): Promise<DealRow[]> {
     token,
     "select id, Deal_Name, Account_Name, Amount, Probability, " +
       "Closing_Date, Leitungserbringung, Stage from Deals " +
-      "where Stage in ('Angebot verschickt','Verhandlungsphase') " +
+      "where Stage in ('Angebot verschickt','Angebot nachgefasst','Verhandlungsphase') " +
       "and Leistungsbereich = 'Consulting'",
   );
 

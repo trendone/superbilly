@@ -92,8 +92,8 @@ export default function PipelineForecast() {
         <div>
           <h2 className="admin-h">Pipeline-Forecast</h2>
           <p className="hint">
-            Offene Zoho-Deals (Angebot verschickt / Verhandlungsphase, Consulting) als weiche,
-            wahrscheinlichkeitsgewichtete Last. Erscheint nicht in der Planung.
+            Offene Zoho-Deals (Angebot verschickt / Angebot nachgefasst / Verhandlungsphase, Consulting)
+            als weiche, wahrscheinlichkeitsgewichtete Last. Erscheint nicht in der Planung.
           </p>
         </div>
         <button className="btn-primary" onClick={onSync} disabled={syncing}>
