@@ -96,6 +96,46 @@ export async function fetchProjectRangeBookings(
   return data
 }
 
+/**
+ * Alle Buchungen der angegebenen Mitarbeitenden, die den Zeitraum [from..to]
+ * berühren – projektübergreifend. Für die Schnellplanung, um die bereits
+ * bestehende Belegung (andere Projekte, Abwesenheit) sichtbar zu machen.
+ */
+export async function fetchEmployeesRangeBookings(
+  employeeIds: string[],
+  fromISO: string,
+  toISO: string,
+): Promise<Booking[]> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  if (employeeIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .in('employee_id', employeeIds)
+    .lte('start_date', toISO)
+    .gte('end_date', fromISO)
+  if (error) throw error
+  return data
+}
+
+/** Reduzierte Projekt-Metadaten zum Klassifizieren/Beschriften fremder Buchungen. */
+export interface ProjectMeta {
+  id: string
+  name: string
+  color: string | null
+  is_system: boolean
+  status: string
+}
+
+export async function fetchProjectMeta(): Promise<ProjectMeta[]> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { data, error } = await supabase
+    .from('projects')
+    .select('id, name, color, is_system, status')
+  if (error) throw error
+  return data
+}
+
 export async function deleteBooking(id: string): Promise<void> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
   const { error } = await supabase.from('bookings').delete().eq('id', id)

@@ -2,11 +2,15 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSPr
 import {
   createBooking,
   deleteBooking,
+  fetchEmployeesRangeBookings,
+  fetchProjectMeta,
   fetchProjectRangeBookings,
   type Booking,
+  type ProjectMeta,
 } from '../lib/data'
 import { addDays, dayLabels, formatDay, isoWeek, mondayOf, toISODate } from '../lib/dates'
 import { holidayName } from '../lib/holidays'
+import { ABSENCE_CATEGORIES, isReservedProject } from '../lib/analytics'
 
 /**
  * Projekt-gebundene Schnellplanung: Das Projekt ist fix (es ist die Detailseite),
@@ -40,6 +44,10 @@ export default function ProjectPlanGrid({
   const [brush, setBrush] = useState<0.5 | 1>(1)
   const [rows, setRows] = useState<string[]>(() => [...initialEmployeeIds])
   const [bookings, setBookings] = useState<Booking[]>([])
+  // Projektübergreifende Buchungen der Zeilen-Mitarbeiter (andere Projekte,
+  // Abwesenheit) – nur zur Anzeige der Belegung, nicht editierbar.
+  const [foreign, setForeign] = useState<Booking[]>([])
+  const [projMeta, setProjMeta] = useState<Map<string, ProjectMeta>>(new Map())
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -87,6 +95,32 @@ export default function ProjectPlanGrid({
     if (extra.length) setRows((r) => [...r, ...extra])
   }, [bookings]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Projekt-Metadaten (einmalig) zum Klassifizieren/Beschriften fremder Buchungen.
+  useEffect(() => {
+    let cancelled = false
+    fetchProjectMeta()
+      .then((list) => !cancelled && setProjMeta(new Map(list.map((p) => [p.id, p]))))
+      .catch((e) => !cancelled && setError(e.message ?? String(e)))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Projektübergreifende Belegung der sichtbaren Mitarbeitenden (ohne dieses
+  // Projekt – dessen Buchungen kommen aus `bookings`).
+  useEffect(() => {
+    let cancelled = false
+    fetchEmployeesRangeBookings(rows, fromISO, toISO)
+      .then((b) => {
+        if (cancelled) return
+        setForeign(b.filter((x) => !displayProjectIds.includes(x.project_id)))
+      })
+      .catch((e) => !cancelled && setError(e.message ?? String(e)))
+    return () => {
+      cancelled = true
+    }
+  }, [rows, fromISO, toISO, displayProjectIds])
+
   function bookingsFor(empId: string, iso: string): Booking[] {
     return bookings.filter(
       (b) => b.employee_id === empId && b.start_date <= iso && b.end_date >= iso,
@@ -101,6 +135,39 @@ export default function ProjectPlanGrid({
       for (const b of bookingsFor(empId, iso)) total += Number(b.budget)
     }
     return Math.round(total * 10) / 10
+  }
+
+  // Fremdbuchungen (andere Projekte / Abwesenheit) an einem Tag.
+  function foreignFor(empId: string, iso: string): Booking[] {
+    return foreign.filter(
+      (b) => b.employee_id === empId && b.start_date <= iso && b.end_date >= iso,
+    )
+  }
+  const isAbsenceMeta = (m?: ProjectMeta) =>
+    !!m && m.is_system && (ABSENCE_CATEGORIES as readonly string[]).includes(m.name)
+  // Kurzes Label + Klasse für eine Fremdbuchung.
+  function foreignInfo(b: Booking): { label: string; cls: string } {
+    const m = projMeta.get(b.project_id)
+    if (isAbsenceMeta(m)) return { label: m!.name, cls: 'bk-foreign bk-foreign-abs' }
+    if (isReservedProject(m)) return { label: m?.name ?? 'vorgemerkt', cls: 'bk-foreign bk-foreign-resv' }
+    return { label: m?.name ?? 'Belegt', cls: 'bk-foreign' }
+  }
+
+  // Tages-Überbuchung: Arbeitsbudget (dieses Projekt + fremde, ohne Abwesenheit &
+  // ohne vorgemerkt) übersteigt die um Abwesenheit/Feiertag reduzierte Kapazität.
+  function dayOverload(empId: string, iso: string): number | null {
+    let work = 0
+    let absence = 0
+    for (const b of bookingsFor(empId, iso)) work += Number(b.budget)
+    for (const b of foreignFor(empId, iso)) {
+      const m = projMeta.get(b.project_id)
+      if (isReservedProject(m)) continue
+      if (isAbsenceMeta(m)) absence += Number(b.budget)
+      else work += Number(b.budget)
+    }
+    const cap = holidayName(iso) ? 0 : 1
+    const avail = Math.max(0, cap - absence)
+    return work > avail + 1e-9 ? Math.round(work * 10) / 10 : null
   }
 
   async function persist(fn: () => Promise<unknown>) {
@@ -250,6 +317,8 @@ export default function ProjectPlanGrid({
                 {days.map((day, i) => {
                   const iso = toISODate(day)
                   const dayBookings = bookingsFor(empId, iso)
+                  const foreignDay = foreignFor(empId, iso)
+                  const over = dayOverload(empId, iso)
                   return (
                     <div
                       key={i}
@@ -257,10 +326,25 @@ export default function ProjectPlanGrid({
                         toISODate(day) === toISODate(new Date()) ? ' is-today' : ''
                       }${holidayName(iso) ? ' is-holiday' : ''}${
                         weeks === 2 && i === 5 ? ' week-sep' : ''
-                      }${inSel(empId, iso) ? ' cell-sel' : ''}`}
+                      }${inSel(empId, iso) ? ' cell-sel' : ''}${over != null ? ' cell-over' : ''}`}
                       onPointerDown={(e) => cellDown(e, empId, iso)}
                       onPointerEnter={() => cellEnter(empId, iso)}
                     >
+                      {over != null && (
+                        <span className="cell-over-badge" title="Tag überbucht">⚠ {over} T</span>
+                      )}
+                      {foreignDay.map((b) => {
+                        const { label, cls } = foreignInfo(b)
+                        return (
+                          <div
+                            key={b.id}
+                            className={cls}
+                            title={`${label} — bereits verplant (${Number(b.budget) === 0.5 ? '½' : '1'} Tag)`}
+                          >
+                            <div className="bk-sub">{label}</div>
+                          </div>
+                        )
+                      })}
                       {dayBookings.map((b) => (
                         <div
                           key={b.id}
@@ -282,7 +366,9 @@ export default function ProjectPlanGrid({
                           </div>
                         </div>
                       ))}
-                      {dayBookings.length === 0 && <div className="cell-add-hint">+</div>}
+                      {dayBookings.length === 0 && foreignDay.length === 0 && (
+                        <div className="cell-add-hint">+</div>
+                      )}
                     </div>
                   )
                 })}

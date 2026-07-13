@@ -1471,6 +1471,33 @@ code {
   min-height: 26px;
 }
 .plan-grid .bk .bk-sub { font-weight: 600; color: var(--text); }
+
+/* Fremdbuchungen: bestehende Belegung anderer Projekte / Abwesenheit –
+   gedämpft, informativ, nicht anklickbar. */
+.bk-foreign {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 6px;
+  margin-bottom: 3px;
+  border-radius: 5px;
+  border-left: 3px solid #cbd5e1;
+  background: #f1f5f9;
+  pointer-events: none;
+}
+.bk-foreign .bk-sub {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bk-foreign-abs { border-left-color: #9c2d1f; background: #fbeae7; }
+.bk-foreign-abs .bk-sub { color: #9c2d1f; }
+.bk-foreign-resv {
+  border-left-color: #94a3b8;
+  background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 4px, #e6ebf1 4px, #e6ebf1 8px);
+}
 .plan-add-emp {
   display: flex;
   align-items: center;
