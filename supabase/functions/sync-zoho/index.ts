@@ -3,7 +3,7 @@
 //
 // Zwei COQL-Abfragen bilden den gesamten Deal-Lebenszyklus in projects ab:
 //  1) beauftragte Consulting-Angebote (Quotes) → status 'aktiv' (buchbar, regulär)
-//  2) offene Consulting-Deals (Stage 'Angebot verschickt'/'Verhandlungsphase')
+//  2) offene Consulting-Deals (Stage 'Angebot verschickt'/'Angebot nachgefasst'/'Verhandlungsphase')
 //     → status 'angebot'/'verhandlung' = vorgemerkte Ressource (buchbar, aber
 //     nicht auslastungswirksam; im Raster schraffiert).
 // Beide nutzen die Deal-ID als external_id → der Übergang Reservierung →
@@ -129,12 +129,17 @@ async function buildRows(token: string): Promise<ProjectRow[]> {
       offer_number: (q.Angebotsnummer as string) ?? null,
       status: "aktiv",
       source: "zoho",
+      // immer gesetzt (null), damit beauftragte + reservierte Zeilen dasselbe
+      // Key-Set haben – sonst kippt der PostgREST-Bulk-Upsert mit PGRST102
+      // "All object keys must match", sobald beide Formen in einem Batch landen.
+      probability: null,
     });
   }
   return [...byExternal.values()];
 }
 
-// Offene Consulting-Deals (Stage "Angebot verschickt" / "Verhandlungsphase") als
+// Offene Consulting-Deals (Stage "Angebot verschickt" / "Angebot nachgefasst" /
+// "Verhandlungsphase") als
 // vorgemerkte Ressourcen. Dealgetrieben (wie sync-pipeline), external_id = Deal-ID
 // – gleicher Schlüssel wie buildRows, daher matcht der spätere Übergang
 // Reservierung → beauftragt automatisch über on_conflict=external_id.
@@ -143,7 +148,7 @@ async function buildReservationRows(token: string): Promise<ProjectRow[]> {
     token,
     "select id, Deal_Name, Account_Name, Amount, Probability, " +
       "Closing_Date, Leitungserbringung, Stage from Deals " +
-      "where Stage in ('Angebot verschickt','Verhandlungsphase') " +
+      "where Stage in ('Angebot verschickt','Angebot nachgefasst','Verhandlungsphase') " +
       "and Leistungsbereich = 'Consulting'",
   );
 
