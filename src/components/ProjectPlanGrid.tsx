@@ -338,7 +338,7 @@ export default function ProjectPlanGrid({
                         return (
                           <div
                             key={b.id}
-                            className={cls}
+                            className={`${cls} ${Number(b.budget) === 0.5 ? 'bk-half' : 'bk-full'}`}
                             title={`${label} — bereits verplant (${Number(b.budget) === 0.5 ? '½' : '1'} Tag)`}
                           >
                             <div className="bk-sub">{label}</div>
@@ -348,7 +348,7 @@ export default function ProjectPlanGrid({
                       {dayBookings.map((b) => (
                         <div
                           key={b.id}
-                          className="bk"
+                          className={`bk ${Number(b.budget) === 0.5 ? 'bk-half' : 'bk-full'}`}
                           style={{
                             borderLeftColor: color,
                             background: `${color}22`,

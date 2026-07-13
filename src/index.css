@@ -1498,6 +1498,12 @@ code {
   border-left-color: #94a3b8;
   background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 4px, #e6ebf1 4px, #e6ebf1 8px);
 }
+
+/* Belegungsanteil über die Kachelhöhe ablesbar: 1 Tag hoch, ½ Tag flach.
+   Gilt für eigene (.bk) wie fremde (.bk-foreign) Kacheln. */
+.plan-grid .bk-full { min-height: 34px; }
+.plan-grid .bk-half { min-height: 16px; padding-top: 1px; padding-bottom: 1px; }
+.plan-grid .bk-half .bk-sub { font-size: 10px; }
 .plan-add-emp {
   display: flex;
   align-items: center;
