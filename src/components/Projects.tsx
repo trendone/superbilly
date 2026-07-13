@@ -24,6 +24,7 @@ import {
   type ProjectLite,
 } from '../lib/milestones'
 import MilestoneForm from './MilestoneForm'
+import ProjectPlanGrid from './ProjectPlanGrid'
 
 const eur = new Intl.NumberFormat('de-DE', {
   style: 'currency',
@@ -514,6 +515,18 @@ export function ProjectDetailView({
           </div>
         )}
       </section>
+
+      {/* Schnellplanung: Tage direkt auf dieses Projekt verplanen (ohne Modal). */}
+      {!p.is_system && (
+        <ProjectPlanGrid
+          projectId={p.id}
+          displayProjectIds={linked ? [p.id, linked.id] : [p.id]}
+          projectColor={p.color}
+          employees={detail.employees}
+          initialEmployeeIds={perEmp.map((e) => e.id)}
+          onChanged={load}
+        />
+      )}
 
       {/* Meilensteine */}
       <section className="ms-group">

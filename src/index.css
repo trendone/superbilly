@@ -1452,3 +1452,28 @@ code {
 @media (max-width: 720px) {
   .about-sync, .about-split { grid-template-columns: 1fr; }
 }
+
+/* ── Projekt-Schnellplanung ─────────────────────────────── */
+.plan-hint { margin: -4px 0 12px; }
+.plan-nav { margin-bottom: 10px; }
+.plan-brush { margin: 0 0 14px; align-items: center; }
+.plan-brush-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
+.plan-empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 16px;
+}
+.plan-grid .bk {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+}
+.plan-grid .bk .bk-sub { font-weight: 600; color: var(--text); }
+.plan-add-emp {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}

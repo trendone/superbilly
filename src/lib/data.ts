@@ -73,6 +73,29 @@ export async function updateBooking(id: string, input: BookingInput): Promise<Bo
   return data
 }
 
+/**
+ * Volle Buchungs-Zeilen der angegebenen Projekte, die den Zeitraum [from..to]
+ * berühren. Für die projekt-gebundene Schnellplanung: das Projekt ist fix, es
+ * werden nur die Buchungen des sichtbaren Wochenfensters geladen (inkl. id, damit
+ * einzelne Kacheln direkt entfernt werden können).
+ */
+export async function fetchProjectRangeBookings(
+  projectIds: string[],
+  fromISO: string,
+  toISO: string,
+): Promise<Booking[]> {
+  if (!supabase) throw new Error('Supabase nicht konfiguriert')
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .in('project_id', projectIds)
+    .lte('start_date', toISO)
+    .gte('end_date', fromISO)
+    .order('start_date')
+  if (error) throw error
+  return data
+}
+
 export async function deleteBooking(id: string): Promise<void> {
   if (!supabase) throw new Error('Supabase nicht konfiguriert')
   const { error } = await supabase.from('bookings').delete().eq('id', id)
