@@ -35,7 +35,7 @@ export const isReservedProject = (p?: { is_system: boolean; status: string } | n
 export const isLostProject = (p?: { status: string } | null): boolean => p?.status === 'verloren'
 
 // Stunden pro „Personentag" (für die Umrechnung Ist-Stunden → Tage).
-const HOURS_PER_DAY = 8
+export const HOURS_PER_DAY = 8
 
 export interface AnalyticsData {
   employees: Employee[]

@@ -15,7 +15,7 @@ import {
   type ProjectsView,
 } from '../lib/projects'
 import { workingDaysBetween } from '../lib/dates'
-import { KEYNOTE_KTR } from '../lib/analytics'
+import { KEYNOTE_KTR, STANDARD_DAY_RATE, HOURS_PER_DAY } from '../lib/analytics'
 import {
   createMilestone,
   deleteMilestone,
@@ -369,11 +369,36 @@ export function ProjectDetailView({
     is_system: p.is_system,
   }
   const linked = detail.linkedProject
-  const budgetDays = p.budget_days != null ? Number(p.budget_days) : null
   // Budget des verknüpften Zoho-Deals einblenden, falls intern keines gepflegt ist.
   const budgetEur = p.budget_eur ?? linked?.budget_eur ?? null
+
+  // Effektiver Tagessatz: manuell > aus Mite abgeleitet > Standard (analog analytics.ts).
+  const billableHours = detail.mite.billableMinutes / 60
+  const dayRateMite =
+    detail.mite.revenue > 0 && billableHours > 0
+      ? Math.round((detail.mite.revenue / billableHours) * HOURS_PER_DAY)
+      : null
+  const manualRate = p.day_rate_eur != null ? Number(p.day_rate_eur) : null
+  const dayRateEur = manualRate ?? dayRateMite ?? STANDARD_DAY_RATE
+
+  // Budget in Tagen: gepflegte Tage, sonst aus Budget-€ / Tagessatz abgeleitet.
+  const budgetDaysManual = p.budget_days != null ? Number(p.budget_days) : null
+  const budgetDaysDerived =
+    budgetDaysManual == null && budgetEur != null && dayRateEur > 0
+      ? Math.round((budgetEur / dayRateEur) * 10) / 10
+      : null
+  const budgetDays = budgetDaysManual ?? budgetDaysDerived
+
+  // Getrackte Tage aus Mite (Minuten → Stunden → Tage).
+  const trackedDays = Math.round((detail.mite.minutes / 60 / HOURS_PER_DAY) * 10) / 10
+  const hasMite = detail.mite.minutes > 0
+
+  // Verbrauch: getrackte Mite-Tage gegen das Budget (in Tagen).
+  const consumedPct = budgetDays ? Math.round((trackedDays / budgetDays) * 100) : null
+  // Auslastung der Planung gegen das Budget (für den Fortschrittsbalken / Warnung).
   const pct = budgetDays ? Math.round((totalPlanned / budgetDays) * 100) : null
   const over = pct != null && pct > 100
+  const overConsumed = consumedPct != null && consumedPct > 100
 
   if (editing) {
     return (
@@ -465,27 +490,51 @@ export function ProjectDetailView({
         <div className="kpi">
           <div className="kpi-label">Budget</div>
           <div className="kpi-val">{budgetDays != null ? `${budgetDays} Tage` : '—'}</div>
+          {budgetEur != null && (
+            <div
+              className="kpi-sub"
+              title={
+                budgetDaysDerived != null
+                  ? `abgeleitet aus ${eur.format(Number(budgetEur))} / Tagessatz ${eur.format(dayRateEur)}`
+                  : undefined
+              }
+            >
+              {eur.format(Number(budgetEur))}
+              {budgetDaysDerived != null ? ' · abgeleitet' : ''}
+            </div>
+          )}
         </div>
         <div className={`kpi${over ? ' kpi-alert' : ''}`}>
           <div className="kpi-label">Verplant</div>
           <div className="kpi-val">{totalPlanned} Tage</div>
+          {pct != null && <div className="kpi-sub">{pct}% des Budgets</div>}
         </div>
         <div className="kpi">
-          <div className="kpi-label">Budget €</div>
-          <div className="kpi-val">{budgetEur != null ? eur.format(Number(budgetEur)) : '—'}</div>
+          <div className="kpi-label">Getrackt (mite)</div>
+          <div className="kpi-val">{hasMite ? `${trackedDays} Tage` : '—'}</div>
+          {hasMite && detail.mite.revenue > 0 && (
+            <div className="kpi-sub">{eur.format(Math.round(detail.mite.revenue))} Umsatz</div>
+          )}
         </div>
-        <div className="kpi">
-          <div className="kpi-label">Auslastung</div>
-          <div className="kpi-val">{pct != null ? `${pct}%` : '—'}</div>
+        <div className={`kpi${overConsumed ? ' kpi-alert' : ''}`}>
+          <div className="kpi-label">Verbrauch</div>
+          <div className="kpi-val">{consumedPct != null && hasMite ? `${consumedPct}%` : '—'}</div>
+          {consumedPct != null && hasMite && (
+            <div className="kpi-sub">{trackedDays} / {budgetDays} Tage</div>
+          )}
         </div>
       </div>
 
       {budgetDays != null && (
-        <div className="cap-bar big" title={`${totalPlanned} / ${budgetDays} Tage`}>
+        <div
+          className="cap-bar big"
+          title={`Getrackt ${trackedDays} · Verplant ${totalPlanned} / Budget ${budgetDays} Tage`}
+        >
+          {/* Gefüllt = getrackter Mite-Verbrauch gegen das Budget (in Tagen). */}
           <span
             style={{
-              width: `${Math.min(pct ?? 0, 100)}%`,
-              background: over ? 'var(--red)' : undefined,
+              width: `${Math.min(consumedPct ?? 0, 100)}%`,
+              background: overConsumed ? 'var(--red)' : undefined,
             }}
           />
         </div>

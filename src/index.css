@@ -349,6 +349,7 @@ code {
 .kpi-alert .kpi-val { color: var(--red); }
 .kpi-unit { font-size: 13px; font-weight: 600; color: var(--muted); }
 .kpi-val.kpi-eur { font-size: 17px; }
+.kpi-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
 .dash-actions { display: flex; gap: 10px; margin-bottom: 16px; }
 

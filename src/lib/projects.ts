@@ -23,6 +23,13 @@ export interface ProjectBooking {
   budget: number
 }
 
+/** Aggregierte Mite-Ist-Zeiten (aus project_actuals) für dieses Projekt. */
+export interface ProjectMite {
+  minutes: number // getrackte Gesamtzeit
+  revenue: number // getrackter Umsatz (nur Zeilen mit revenue > 0)
+  billableMinutes: number // Minuten der abrechenbaren Zeilen (für den Tagessatz)
+}
+
 export interface ProjectDetail {
   project: Project
   /** Verknüpftes Zoho-Projekt (source='zoho'), falls dieses Projekt manuell damit
@@ -31,6 +38,8 @@ export interface ProjectDetail {
   milestones: Milestone[]
   bookings: ProjectBooking[]
   employees: { id: string; name: string }[]
+  /** Ist-Zeiten aus Mite über beide Projekt-IDs (interne + verknüpfte Zoho-Zeile). */
+  mite: ProjectMite
 }
 
 /** Alle echten (Nicht-System-)Projekte. */
@@ -167,7 +176,7 @@ export async function fetchProjectDetail(projectId: string): Promise<ProjectDeta
 
   // Meilensteine/Buchungen über beide Projekt-IDs (interne + verknüpfte Zoho-Zeile).
   const ids = linkedProject ? [projectId, linkedProject.id] : [projectId]
-  const [ms, book, emp] = await Promise.all([
+  const [ms, book, emp, act] = await Promise.all([
     supabase
       .from('milestones')
       .select('*')
@@ -178,16 +187,35 @@ export async function fetchProjectDetail(projectId: string): Promise<ProjectDeta
       .select('employee_id, start_date, end_date, budget')
       .in('project_id', ids),
     supabase.from('employees').select('id, name').order('name'),
+    supabase.from('project_actuals').select('minutes, revenue_eur').in('project_id', ids),
   ])
   if (ms.error) throw ms.error
   if (book.error) throw book.error
   if (emp.error) throw emp.error
+  if (act.error) throw act.error
+
+  // Mite-Ist über beide Projekt-IDs summieren (analog zu analytics.ts/projectStats).
+  const mite = (act.data ?? []).reduce<ProjectMite>(
+    (m, r) => {
+      const min = Number(r.minutes ?? 0)
+      const rev = Number(r.revenue_eur ?? 0)
+      m.minutes += min
+      if (rev > 0) {
+        m.revenue += rev
+        m.billableMinutes += min
+      }
+      return m
+    },
+    { minutes: 0, revenue: 0, billableMinutes: 0 },
+  )
+
   return {
     project,
     linkedProject,
     milestones: ms.data,
     bookings: book.data as ProjectBooking[],
     employees: emp.data,
+    mite,
   }
 }
 
