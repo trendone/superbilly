@@ -9,7 +9,12 @@ name: Monitor superbilly
 on:
   schedule:
     - cron: '*/15 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: 'Testlauf: Fehler simulieren (zum Prüfen der Alarmierung)'
+        type: boolean
+        default: false
 
 permissions:
   issues: write
@@ -71,10 +76,14 @@ jobs:
           DEPLOY_STATE: ${{ steps.deploy.outputs.state }}
           SYNC_TOTAL: ${{ steps.sync.outputs.total }}
           SYNC_BAD: ${{ steps.sync.outputs.bad }}
+          SIMULATE_FAILURE: ${{ github.event.inputs.simulate_failure }}
         run: |
           gh label create monitoring --color "d73a4a" --description "Automatisches App-Monitoring" 2>/dev/null || true
 
           problems=()
+          if [ "$SIMULATE_FAILURE" = "true" ]; then
+            problems+=("- TEST: manuell simulierter Fehler (workflow_dispatch simulate_failure=true)")
+          fi
           if [ "$APP_CODE" != "200" ]; then
             problems+=("- App nicht erreichbar unter $APP_URL (HTTP $APP_CODE)")
           fi
@@ -90,7 +99,7 @@ jobs:
           fi
 
           existing=$(gh issue list --label monitoring --state open --json number,title --limit 5)
-          issue_number=$(echo "$existing" | jq -r '.[0].number // empty')
+          issue_number=$(printf '%s' "$existing" | jq -r '.[0].number // empty')
 
           if [ "${#problems[@]}" -gt 0 ]; then
             body="Automatisch erkannt am $(date -u '+%Y-%m-%d %H:%M UTC'):
