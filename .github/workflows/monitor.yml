@@ -66,6 +66,7 @@ jobs:
       - name: Auswerten und ggf. Issue erstellen/schließen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           APP_CODE: ${{ steps.app.outputs.code }}
           DEPLOY_STATE: ${{ steps.deploy.outputs.state }}
           SYNC_TOTAL: ${{ steps.sync.outputs.total }}
