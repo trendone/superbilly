@@ -1,0 +1,109 @@
+name: Monitor superbilly
+
+# Prüft alle 15 Minuten:
+#  - ist die App (Vercel) erreichbar / letztes Deployment READY?
+#  - liefen Zoho-/Mite-/Abgrenzungen-Sync (pg_cron) in den letzten 35 Minuten fehlerfrei?
+# Bei Problemen wird ein GitHub-Issue erstellt/aktualisiert (Label "monitoring"),
+# bei Wiederherstellung automatisch geschlossen.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+env:
+  APP_URL: https://superbilly.vercel.app/
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: App-Verfügbarkeit prüfen
+        id: app
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$APP_URL" || echo "000")
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Letztes Vercel-Deployment prüfen
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          resp=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?limit=1&projectId=superbilly&target=production")
+          state=$(printf '%s' "$resp" | jq -r '.deployments[0].readyState // "UNKNOWN"')
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+
+      - name: Zoho-/Mite-Sync prüfen (pg_cron / pg_net)
+        id: sync
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          query=$(cat <<'SQL'
+          select json_build_object(
+            'total_recent', (select count(*) from net._http_response where created > now() - interval '35 minutes'),
+            'bad_recent', (select count(*) from net._http_response where created > now() - interval '35 minutes' and (status_code is distinct from 200 or content::text not ilike '%"ok":true%'))
+          ) as result;
+          SQL
+          )
+          body=$(jq -n --arg q "$query" '{query: $q}')
+          resp=$(curl -s -X POST \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            -d "$body")
+          printf 'response: %s\n' "$resp"
+          total=$(printf '%s' "$resp" | jq -r '.[0].result.total_recent // -1')
+          bad=$(printf '%s' "$resp" | jq -r '.[0].result.bad_recent // -1')
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "bad=$bad" >> "$GITHUB_OUTPUT"
+
+      - name: Auswerten und ggf. Issue erstellen/schließen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_CODE: ${{ steps.app.outputs.code }}
+          DEPLOY_STATE: ${{ steps.deploy.outputs.state }}
+          SYNC_TOTAL: ${{ steps.sync.outputs.total }}
+          SYNC_BAD: ${{ steps.sync.outputs.bad }}
+        run: |
+          gh label create monitoring --color "d73a4a" --description "Automatisches App-Monitoring" 2>/dev/null || true
+
+          problems=()
+          if [ "$APP_CODE" != "200" ]; then
+            problems+=("- App nicht erreichbar unter $APP_URL (HTTP $APP_CODE)")
+          fi
+          if [ "$DEPLOY_STATE" != "READY" ]; then
+            problems+=("- Letztes Vercel-Deployment (production) ist nicht READY (Status: $DEPLOY_STATE)")
+          fi
+          if [ "$SYNC_TOTAL" = "-1" ]; then
+            problems+=("- Sync-Status konnte nicht abgefragt werden (Supabase Management API Fehler)")
+          elif [ "$SYNC_TOTAL" = "0" ]; then
+            problems+=("- Kein Zoho-/Mite-/Abgrenzungen-Sync in den letzten 35 Minuten erkannt (pg_cron evtl. gestoppt)")
+          elif [ "$SYNC_BAD" != "0" ]; then
+            problems+=("- $SYNC_BAD von $SYNC_TOTAL Sync-Läufen in den letzten 35 Minuten fehlgeschlagen")
+          fi
+
+          existing=$(gh issue list --label monitoring --state open --json number,title --limit 5)
+          issue_number=$(echo "$existing" | jq -r '.[0].number // empty')
+
+          if [ "${#problems[@]}" -gt 0 ]; then
+            body="Automatisch erkannt am $(date -u '+%Y-%m-%d %H:%M UTC'):
+          $(printf '%s\n' "${problems[@]}")
+
+          _Dieses Issue wird automatisch geschlossen, sobald alle Checks wieder grün sind._"
+
+            if [ -n "$issue_number" ]; then
+              gh issue comment "$issue_number" --body "$body"
+            else
+              gh issue create --title "🔴 superbilly: Störung erkannt" --label monitoring --body "$body"
+            fi
+          else
+            if [ -n "$issue_number" ]; then
+              gh issue close "$issue_number" --comment "Alle Checks wieder grün ($(date -u '+%Y-%m-%d %H:%M UTC'))."
+            fi
+          fi
