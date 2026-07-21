@@ -56,7 +56,9 @@ function downloadCSV(filename: string, rows: (string | number)[][]) {
     .map((r) =>
       r
         .map((cell) => {
-          const s = String(cell ?? '')
+          // Zahlen mit deutschem Dezimalkomma ausgeben (ohne Tausender-Trenner),
+          // sonst liest deutsches Excel z. B. "7.5" als Datum statt als Tage.
+          const s = typeof cell === 'number' ? String(cell).replace('.', ',') : String(cell ?? '')
           return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
         })
         .join(';'),
