@@ -3,7 +3,6 @@ import {
   employeeMonthStats,
   fetchAnalytics,
   monthDetail,
-  monthWindow,
   projectKpis,
   projectStats,
   summarize,
@@ -51,6 +50,13 @@ const rateMark = (s: ProjectStat['rateSource']) => (s === 'manuell' ? ' ✎' : s
 /** Tages-Delta als String mit Vorzeichen. */
 const dT = (v: number | null) => (v == null ? '–' : `${v >= 0 ? '+' : ''}${Math.round(v * 10) / 10} T`)
 
+/** Anzahl Monate von Januar bis heute für ein Jahr (12 für vergangene Jahre, 0 für zukünftige). */
+function ytdMonthCount(year: number, today = new Date()): number {
+  if (year < today.getFullYear()) return 12
+  if (year > today.getFullYear()) return 0
+  return today.getMonth() + 1
+}
+
 function downloadCSV(filename: string, rows: (string | number)[][]) {
   const csv = rows
     .map((r) =>
@@ -74,7 +80,9 @@ function downloadCSV(filename: string, rows: (string | number)[][]) {
 }
 
 type SubTab = 'projekte' | 'mitarbeiter'
-type Period = '6m' | 'year'
+// Ansicht 1 „sold": verkaufte Tage in % der buchbaren Tage. Ansicht 2 „remaining":
+// wie viele Tage sind von der Restmenge der buchbaren Tage noch verkaufbar (ganze Tage).
+type View = 'sold' | 'remaining'
 type SortKey =
   | 'name' | 'budgetEur' | 'dayRate' | 'budgetDays' | 'plan' | 'ist'
   | 'dIstBud' | 'verbrauch' | 'mitarbeiter'
@@ -117,7 +125,7 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
   const [sub, setSub] = useState<SubTab>('projekte')
 
   // Mitarbeiter-Controls
-  const [period, setPeriod] = useState<Period>('year')
+  const [view, setView] = useState<View>('sold')
   const [year, setYear] = useState(() => new Date().getFullYear())
   const [selected, setSelected] = useState<Selected | null>(null)
 
@@ -167,10 +175,8 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
     }
   }, [])
 
-  const months = useMemo<MonthWindow[]>(
-    () => (period === 'year' ? yearWindow(year) : monthWindow(new Date(), -2, 3)),
-    [period, year],
-  )
+  const months = useMemo<MonthWindow[]>(() => yearWindow(year), [year])
+  const ytdCount = useMemo(() => ytdMonthCount(year), [year])
 
   const allStats = useMemo(() => (data ? projectStats(data) : []), [data])
 
@@ -222,12 +228,17 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
   function exportEmployees() {
     if (!data) return
     const deptName = new Map(data.departments.map((d) => [d.id, d.name]))
-    const rows: (string | number)[][] = [['Mitarbeiter', 'Abteilung', ...months.map((m) => m.label), 'Σ %']]
+    const cell = (s: { pct: number; bookedDays: number; netAvailDays: number }) =>
+      view === 'sold' ? `${s.pct}%` : `${Math.round(s.netAvailDays - s.bookedDays)} T`
+    const rows: (string | number)[][] = [
+      ['Mitarbeiter', 'Abteilung', ...months.map((m) => m.label), 'Σ Jahr', 'Σ YTD'],
+    ]
     for (const emp of data.employees) {
       const stats = employeeMonthStats(emp, data, months)
-      const sum = summarize(stats)
+      const sumFull = summarize(stats)
+      const sumYtd = summarize(stats.slice(0, ytdCount))
       const dept = emp.department_id ? deptName.get(emp.department_id) ?? '' : ''
-      rows.push([emp.name, dept, ...stats.map((s) => `${s.pct}%`), `${sum.pct}%`])
+      rows.push([emp.name, dept, ...stats.map(cell), cell(sumFull), cell(sumYtd)])
     }
     downloadCSV('auswertung-mitarbeiter.csv', rows)
   }
@@ -276,10 +287,11 @@ export default function Analytics({ onOpenWeek }: { onOpenWeek?: (d: Date) => vo
         <EmployeesView
           data={data}
           months={months}
-          period={period}
-          setPeriod={setPeriod}
+          view={view}
+          setView={setView}
           year={year}
           setYear={setYear}
+          ytdCount={ytdCount}
           kpis={kpis}
           selected={selected}
           setSelected={setSelected}
@@ -503,10 +515,11 @@ function ProjectsView({
 function EmployeesView({
   data,
   months,
-  period,
-  setPeriod,
+  view,
+  setView,
   year,
   setYear,
+  ytdCount,
   kpis,
   selected,
   setSelected,
@@ -514,10 +527,11 @@ function EmployeesView({
 }: {
   data: AnalyticsData
   months: MonthWindow[]
-  period: Period
-  setPeriod: (p: Period) => void
+  view: View
+  setView: (v: View) => void
   year: number
   setYear: (y: number) => void
+  ytdCount: number
   kpis: ReturnType<typeof teamKpis> | null
   selected: Selected | null
   setSelected: (s: Selected | null) => void
@@ -525,19 +539,26 @@ function EmployeesView({
 }) {
   const [deptFilter, setDeptFilter] = useState<string>('alle') // 'alle' | dept.id | 'none'
 
+  // Zellwert je Ansicht: „sold" = Anteil verkaufter Tage in %, „remaining" = Rest der
+  // verkaufbaren Tage in ganzen Tagen. Farbcodierung bleibt immer an % (Auslastung) geknüpft.
+  function fmtAgg(a: { pct: number; booked: number; avail: number }): string {
+    if (a.avail <= 0) return '–'
+    return view === 'sold' ? `${a.pct}%` : `${Math.round(a.avail - a.booked)} T`
+  }
+  const sumClass = (pct: number) => (pct > 100 ? 'red' : pct < 70 ? 'dim' : 'green')
+
   const rows = useMemo(
     () =>
-      data.employees.map((emp) => ({
-        emp,
-        stats: employeeMonthStats(emp, data, months),
-        sum: summarize(employeeMonthStats(emp, data, months)),
-      })),
-    [data, months],
+      data.employees.map((emp) => {
+        const stats = employeeMonthStats(emp, data, months)
+        return { emp, stats, sumFull: summarize(stats), sumYtd: summarize(stats.slice(0, ytdCount)) }
+      }),
+    [data, months, ytdCount],
   )
 
   type Row = (typeof rows)[number]
 
-  // Spaltenweise Aggregation (je Monat + Σ) über eine Gruppe von Mitarbeitern.
+  // Spaltenweise Aggregation (je Monat + Σ Jahr + Σ YTD) über eine Gruppe von Mitarbeitern.
   function subtotal(groupRows: Row[]) {
     const perMonth = months.map((_, i) => {
       let booked = 0
@@ -548,13 +569,12 @@ function EmployeesView({
       }
       return { booked, avail, pct: avail > 0 ? Math.round((booked / avail) * 100) : 0 }
     })
-    let booked = 0
-    let avail = 0
-    for (const r of groupRows) {
-      booked += r.sum.bookedDays
-      avail += r.sum.netAvailDays
+    const agg = (slice: typeof perMonth) => {
+      const booked = slice.reduce((s, m) => s + m.booked, 0)
+      const avail = slice.reduce((s, m) => s + m.avail, 0)
+      return { booked, avail, pct: avail > 0 ? Math.round((booked / avail) * 100) : 0 }
     }
-    return { perMonth, pct: avail > 0 ? Math.round((booked / avail) * 100) : 0 }
+    return { perMonth, full: agg(perMonth), ytd: agg(perMonth.slice(0, ytdCount)) }
   }
 
   // Mitarbeiter nach Abteilung gruppieren (gefiltert). „Ohne Abteilung" zuletzt;
@@ -614,8 +634,12 @@ function EmployeesView({
 
       <div className="ana-toolbar">
         <span className="week-toggle">
-          <button className={period === '6m' ? 'active' : ''} onClick={() => setPeriod('6m')}>6 Monate</button>
-          <button className={period === 'year' ? 'active' : ''} onClick={() => setPeriod('year')}>Jahr</button>
+          <button className={view === 'sold' ? 'active' : ''} onClick={() => setView('sold')} title="Anteil verkaufter Tage an den buchbaren Tagen">
+            Verkauft %
+          </button>
+          <button className={view === 'remaining' ? 'active' : ''} onClick={() => setView('remaining')} title="Rest der buchbaren Tage, die noch verkauft werden können">
+            Noch verkaufbar
+          </button>
         </span>
         {data.departments.length > 0 && (
           <label>
@@ -629,13 +653,11 @@ function EmployeesView({
             </select>
           </label>
         )}
-        {period === 'year' && (
-          <span className="year-nav">
-            <button onClick={() => setYear(year - 1)}>←</button>
-            <span>{year}</span>
-            <button onClick={() => setYear(year + 1)}>→</button>
-          </span>
-        )}
+        <span className="year-nav">
+          <button onClick={() => setYear(year - 1)}>←</button>
+          <span>{year}</span>
+          <button onClick={() => setYear(year + 1)}>→</button>
+        </span>
         <span className="dim heat-legend">
           <i style={{ background: '#dbeafe' }} />&lt;70
           <i style={{ background: '#dcfce7' }} />ok
@@ -652,7 +674,8 @@ function EmployeesView({
               {months.map((m) => (
                 <th key={`${m.year}-${m.month}`} className="num">{m.label}</th>
               ))}
-              <th className="num heat-sum">Σ</th>
+              <th className="num heat-sum">Σ Jahr</th>
+              <th className="num heat-sum">Σ YTD</th>
             </tr>
           </thead>
           <tbody>
@@ -663,14 +686,14 @@ function EmployeesView({
                 <Fragment key={g.id ?? '__none__'}>
                   {g.name && (
                     <tr className="heat-group">
-                      <th className="heat-name" colSpan={months.length + 2}>
+                      <th className="heat-name" colSpan={months.length + 3}>
                         {g.color && <span className="grid-group-dot" style={{ background: g.color }} />}
                         {g.name}
                         <span className="grid-group-count">{g.rows.length}</span>
                       </th>
                     </tr>
                   )}
-                  {g.rows.map(({ emp, stats, sum }) => (
+                  {g.rows.map(({ emp, stats, sumFull, sumYtd }) => (
                     <tr key={emp.id}>
                       <td className="heat-name">
                         {emp.name}
@@ -687,13 +710,20 @@ function EmployeesView({
                               title={`${s.bookedDays} / ${s.netAvailDays} T${s.absenceDays ? ` · ${s.absenceDays} T abw.` : ''}${s.adminDays ? ` · ${s.adminDays} T Admin` : ''}`}
                               onClick={() => setSelected(isSel ? null : { emp, win: { year: s.year, month: s.month, label: s.label } })}
                             >
-                              {s.netAvailDays > 0 ? `${s.pct}%` : '–'}
+                              {s.netAvailDays > 0 ? (view === 'sold' ? `${s.pct}%` : `${Math.round(s.netAvailDays - s.bookedDays)} T`) : '–'}
                             </button>
                           </td>
                         )
                       })}
                       <td className="num heat-sum">
-                        <span className={sum.pct > 100 ? 'red' : sum.pct < 70 ? 'dim' : 'green'}>{sum.pct}%</span>
+                        <span className={sumClass(sumFull.pct)}>
+                          {fmtAgg({ pct: sumFull.pct, booked: sumFull.bookedDays, avail: sumFull.netAvailDays })}
+                        </span>
+                      </td>
+                      <td className="num heat-sum">
+                        <span className={sumClass(sumYtd.pct)}>
+                          {fmtAgg({ pct: sumYtd.pct, booked: sumYtd.bookedDays, avail: sumYtd.netAvailDays })}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -701,9 +731,10 @@ function EmployeesView({
                     <tr className="heat-subtotal">
                       <td className="heat-name">Σ {g.name}</td>
                       {sub.perMonth.map((m, i) => (
-                        <td key={i} className="num">{m.avail > 0 ? `${m.pct}%` : '–'}</td>
+                        <td key={i} className="num">{fmtAgg(m)}</td>
                       ))}
-                      <td className="num heat-sum">{sub.pct}%</td>
+                      <td className="num heat-sum">{fmtAgg(sub.full)}</td>
+                      <td className="num heat-sum">{fmtAgg(sub.ytd)}</td>
                     </tr>
                   )}
                 </Fragment>
