@@ -8,7 +8,18 @@ import {
   type Booking,
   type ProjectMeta,
 } from '../lib/data'
-import { addDays, dayLabels, formatDay, isoWeek, mondayOf, toISODate } from '../lib/dates'
+import {
+  addDays,
+  addMonths,
+  formatDay,
+  formatMonth,
+  isoWeek,
+  mondayOf,
+  startOfMonth,
+  toISODate,
+  weekdayLabel,
+  workingDaysOfMonth,
+} from '../lib/dates'
 import { holidayName } from '../lib/holidays'
 import { ABSENCE_CATEGORIES, isReservedProject } from '../lib/analytics'
 
@@ -19,12 +30,30 @@ import { ABSENCE_CATEGORIES, isReservedProject } from '../lib/analytics'
  * auf eine Kachel entfernt sie. Gedacht für stark fragmentierte Projekte, bei
  * denen das buchungs-zentrierte Wochenraster mühsam ist.
  */
+
+/** Sichtbares Zeitfenster: 1 oder 2 Wochen bzw. der ganze Monat. */
+type PlanMode = 1 | 2 | 'month'
+
+/** Sprungziel aus der „Wann verplant"-Liste der Detailseite. `nonce` sorgt
+ *  dafür, dass auch ein erneuter Klick auf dasselbe Datum wieder springt. */
+export interface PlanFocus {
+  iso: string
+  nonce: number
+}
+
+/** Trennlinie zum Wochenanfang – im Monatsraster für jede neue Woche, im
+ *  2-Wochen-Fenster für die zweite Woche. */
+function isWeekStart(d: Date, i: number): boolean {
+  return i > 0 && d.getDay() === 1
+}
+
 export default function ProjectPlanGrid({
   projectId,
   displayProjectIds,
   projectColor,
   employees,
   initialEmployeeIds,
+  focus,
   onChanged,
 }: {
   /** Buchungs-Ziel (das aktuell betrachtete Projekt). */
@@ -36,11 +65,14 @@ export default function ProjectPlanGrid({
   employees: { id: string; name: string }[]
   /** Mitarbeitende, die schon auf dem Projekt sind – Startzeilen. */
   initialEmployeeIds: string[]
+  /** Optionales Sprungziel: blättert das Raster auf diesen Tag. */
+  focus?: PlanFocus | null
   /** Nach jeder Änderung: Budget-/KPI-Anzeige der Detailseite auffrischen. */
   onChanged: () => void
 }) {
   const [monday, setMonday] = useState(() => mondayOf(new Date()))
-  const [weeks, setWeeks] = useState<1 | 2>(2)
+  const [monthStart, setMonthStart] = useState(() => startOfMonth(new Date()))
+  const [mode, setMode] = useState<PlanMode>(2)
   const [brush, setBrush] = useState<0.5 | 1>(1)
   const [rows, setRows] = useState<string[]>(() => [...initialEmployeeIds])
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -53,6 +85,7 @@ export default function ProjectPlanGrid({
 
   const [sel, setSel] = useState<{ empId: string; startISO: string; endISO: string } | null>(null)
   const drag = useRef<{ empId: string; anchor: string; moved: boolean } | null>(null)
+  const sectionRef = useRef<HTMLElement | null>(null)
 
   const empName = useMemo(() => {
     const m = new Map<string, string>()
@@ -60,12 +93,23 @@ export default function ProjectPlanGrid({
     return m
   }, [employees])
 
-  // Arbeitstage (Mo–Fr) über die sichtbaren 1 oder 2 Wochen.
+  // Arbeitstage (Mo–Fr) des sichtbaren Fensters: 1/2 Wochen oder ganzer Monat.
   const days = useMemo(() => {
+    if (mode === 'month') return workingDaysOfMonth(monthStart)
     const out: Date[] = []
-    for (let w = 0; w < weeks; w++) for (let i = 0; i < 5; i++) out.push(addDays(monday, w * 7 + i))
+    for (let w = 0; w < mode; w++) for (let i = 0; i < 5; i++) out.push(addDays(monday, w * 7 + i))
     return out
-  }, [monday, weeks])
+  }, [monday, monthStart, mode])
+
+  // Sprungziel aus der „Wann verplant"-Liste: Fenster auf den Tag legen und
+  // das Raster in den Blick scrollen.
+  useEffect(() => {
+    if (!focus) return
+    const d = new Date(`${focus.iso}T00:00:00`)
+    setMonday(mondayOf(d))
+    setMonthStart(startOfMonth(d))
+    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [focus])
 
   const color = projectColor ?? '#7c6dfa'
   const fromISO = toISODate(days[0])
@@ -241,14 +285,40 @@ export default function ProjectPlanGrid({
     iso <= (sel.startISO > sel.endISO ? sel.startISO : sel.endISO)
 
   const availableToAdd = employees.filter((e) => !rows.includes(e.id))
-  const lastMonday = addDays(monday, (weeks - 1) * 7)
-  const weekLabel =
-    weeks === 1
+  const isMonth = mode === 'month'
+  const lastMonday = addDays(monday, (mode === 2 ? 1 : 0) * 7)
+  const rangeLabel = isMonth
+    ? `${formatMonth(monthStart)} · ${days.length} Werktage`
+    : mode === 1
       ? `KW ${isoWeek(monday)} · ${formatDay(days[0])}–${formatDay(days[4])}`
       : `KW ${isoWeek(monday)}–${isoWeek(lastMonday)} · ${formatDay(days[0])}–${formatDay(days[days.length - 1])}`
 
+  /** Ein Fenster vor/zurück – je nach Modus Wochen oder Monate. */
+  function shift(dir: -1 | 1) {
+    if (isMonth) setMonthStart((m) => addMonths(m, dir))
+    else setMonday((m) => addDays(m, dir * 7 * mode))
+  }
+  function jumpToday() {
+    setMonday(mondayOf(new Date()))
+    setMonthStart(startOfMonth(new Date()))
+  }
+  /** Moduswechsel behält den betrachteten Zeitraum bei, statt auf heute zu springen. */
+  function switchMode(next: PlanMode) {
+    if (next === mode) return
+    if (next === 'month') {
+      // Mitte des Fensters, nicht dessen Start – ein 2-Wochen-Fenster über den
+      // Monatswechsel soll im „gefühlt" betrachteten Monat landen.
+      setMonthStart(startOfMonth(days[Math.floor(days.length / 2)]))
+    } else if (isMonth) {
+      const now = new Date()
+      const showsThisMonth = startOfMonth(now).getTime() === monthStart.getTime()
+      setMonday(mondayOf(showsThisMonth ? now : days[0]))
+    }
+    setMode(next)
+  }
+
   return (
-    <section className="ms-group plan-grid">
+    <section ref={sectionRef} className={`ms-group plan-grid${isMonth ? ' plan-month' : ''}`}>
       <h3 className="ms-group-title">Schnellplanung</h3>
       <p className="hint plan-hint">
         Projekt ist gesetzt – nur noch Mitarbeiter-Zeile &amp; Tage wählen. Tag klicken oder ziehen
@@ -256,13 +326,14 @@ export default function ProjectPlanGrid({
       </p>
 
       <div className="week-nav plan-nav">
-        <button onClick={() => setMonday(addDays(monday, -7 * weeks))} title="Zurück">←</button>
-        <span className="week-label">{weekLabel}</span>
-        <button onClick={() => setMonday(addDays(monday, 7 * weeks))} title="Weiter">→</button>
-        <button className="today" onClick={() => setMonday(mondayOf(new Date()))}>Heute</button>
+        <button onClick={() => shift(-1)} title="Zurück">←</button>
+        <span className="week-label">{rangeLabel}</span>
+        <button onClick={() => shift(1)} title="Weiter">→</button>
+        <button className="today" onClick={jumpToday}>Heute</button>
         <span className="week-toggle">
-          <button className={weeks === 1 ? 'active' : ''} onClick={() => setWeeks(1)}>1 Woche</button>
-          <button className={weeks === 2 ? 'active' : ''} onClick={() => setWeeks(2)}>2 Wochen</button>
+          <button className={mode === 1 ? 'active' : ''} onClick={() => switchMode(1)}>1 Woche</button>
+          <button className={mode === 2 ? 'active' : ''} onClick={() => switchMode(2)}>2 Wochen</button>
+          <button className={isMonth ? 'active' : ''} onClick={() => switchMode('month')}>Monat</button>
         </span>
       </div>
 
@@ -279,7 +350,9 @@ export default function ProjectPlanGrid({
           className="grid"
           style={
             {
-              gridTemplateColumns: `var(--name-w, 200px) repeat(${days.length}, minmax(var(--col-min, 0px), 1fr))`,
+              gridTemplateColumns: `var(--name-w, 200px) repeat(${days.length}, minmax(${
+                isMonth ? 'var(--month-col-min, 54px)' : 'var(--col-min, 0px)'
+              }, 1fr))`,
             } as CSSProperties
           }
         >
@@ -291,10 +364,10 @@ export default function ProjectPlanGrid({
                 key={i}
                 className={`gh${toISODate(d) === toISODate(new Date()) ? ' is-today' : ''}${
                   hol ? ' is-holiday' : ''
-                }${weeks === 2 && i === 5 ? ' week-sep' : ''}`}
+                }${isWeekStart(d, i) ? ' week-sep' : ''}`}
                 title={hol ?? undefined}
               >
-                {dayLabels[i % 5]} <span>{formatDay(d)}</span>
+                {weekdayLabel(d)} <span>{formatDay(d)}</span>
                 {hol && <span className="holiday-tag">{hol}</span>}
               </div>
             )
@@ -325,7 +398,7 @@ export default function ProjectPlanGrid({
                       className={`gc cell editable${
                         toISODate(day) === toISODate(new Date()) ? ' is-today' : ''
                       }${holidayName(iso) ? ' is-holiday' : ''}${
-                        weeks === 2 && i === 5 ? ' week-sep' : ''
+                        isWeekStart(day, i) ? ' week-sep' : ''
                       }${inSel(empId, iso) ? ' cell-sel' : ''}${over != null ? ' cell-over' : ''}`}
                       onPointerDown={(e) => cellDown(e, empId, iso)}
                       onPointerEnter={() => cellEnter(empId, iso)}

@@ -41,6 +41,45 @@ export function workingDaysBetween(startISO: string, endISO: string): number {
   return count
 }
 
+/** Wochentags-Kürzel aus dem echten Datum (nicht aus der Spaltenposition –
+ *  ein Monatsraster startet an einem beliebigen Wochentag). */
+export function weekdayLabel(date: Date): string {
+  return ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][date.getDay()]
+}
+
+/** Erster Tag des Monats, auf Mitternacht normalisiert. */
+export function startOfMonth(date: Date): Date {
+  const d = new Date(date)
+  d.setDate(1)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+/** Monatssprung ausgehend vom Monatsersten (kein Überlauf bei 31 Tagen). */
+export function addMonths(date: Date, n: number): Date {
+  const d = startOfMonth(date)
+  d.setMonth(d.getMonth() + n)
+  return d
+}
+
+/** Alle Werktage (Mo–Fr) des Monats, in dem `date` liegt. */
+export function workingDaysOfMonth(date: Date): Date[] {
+  const d = startOfMonth(date)
+  const month = d.getMonth()
+  const out: Date[] = []
+  while (d.getMonth() === month) {
+    const wd = d.getDay()
+    if (wd !== 0 && wd !== 6) out.push(new Date(d))
+    d.setDate(d.getDate() + 1)
+  }
+  return out
+}
+
+const monthFmt = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' })
+export function formatMonth(date: Date): string {
+  return monthFmt.format(date)
+}
+
 export function isoWeek(date: Date): number {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
   const dayNum = (d.getUTCDay() + 6) % 7

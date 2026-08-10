@@ -492,6 +492,23 @@ fürs Controlling (v3.1).
   `projects_status_check`-Constraint.
 - Voraussetzungen: v2.1 (sync-zoho) · Risiko: gering–mittel (Zoho-Stage-Semantik)
 
+### v2.5 – Projektplanung: Monatsfenster + „Wann verplant" ✅ LIVE (2026-08-10)
+Aus zwei Nutzer-Rückmeldungen zur Projekt-Detailseite:
+- **Monatsfenster in der Schnellplanung**: der Umschalter kennt jetzt `1 Woche /
+  2 Wochen / Monat`. Im Monatsmodus zeigt das Raster alle Werktage des Monats
+  (Spalten schmaler, horizontal scrollend, Trennlinie je Wochenanfang). Für die
+  Projektplanung ist der Monat die natürliche Einheit – zwei Wochen waren zu kurz.
+  Moduswechsel behält den betrachteten Zeitraum (über die Fenstermitte), springt
+  also nicht auf „heute" zurück.
+- **„Wann verplant"**: Die KPI-Kachel *Verplant* und jede Mitarbeiter-Zeile sind
+  klickbar und öffnen die Liste aller Buchungen des Projekts mit Datum – inklusive
+  solcher weit außerhalb des Rasterfensters. Ein Klick auf einen Eintrag blättert
+  das Raster auf diesen Tag. Löst den Fall „Projekt meldet 1 verplanten Tag, ich
+  finde ihn im Raster nicht" (die Detailseite lädt ohnehin *alle* Buchungen, die
+  Information war nur nicht sichtbar).
+- Rein im Frontend (`ProjectPlanGrid.tsx`, `Projects.tsx`, `dates.ts`), keine
+  Migration, keine neuen Requests.
+
 ### v3.0 – PM-Kern: Arbeitspakete
 - `workpackages`, Buchungen hängen an Paketen, Soll/Ist pro Paket
 - Projekt-Detail-/Gantt-Ansicht

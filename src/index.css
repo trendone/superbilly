@@ -1133,6 +1133,8 @@ code {
   .grid {
     --name-w: 124px;
     --col-min: 116px;
+    /* Monatsraster bleibt schmal (22 Spalten), aber mit tauglicher Tap-Fläche. */
+    --month-col-min: 68px;
     width: max-content;
     min-width: 100%;
   }
@@ -1510,4 +1512,64 @@ code {
   align-items: center;
   gap: 12px;
   margin-top: 12px;
+}
+
+/* Monatsfenster: ~22 schmale Spalten – kompakter, scrollt horizontal. */
+.plan-grid.plan-month .gh { padding: 8px 4px; font-size: 11px; text-align: center; }
+.plan-grid.plan-month .gh.corner { text-align: left; padding: 8px 12px; font-size: 12px; }
+.plan-grid.plan-month .gh span { display: block; }
+.plan-grid.plan-month .holiday-tag { display: none; }
+.plan-grid.plan-month .gc.cell { padding: 4px; min-height: 54px; }
+.plan-grid.plan-month .bk { padding: 2px 4px; }
+.plan-grid.plan-month .bk-sub { font-size: 10px; }
+.plan-grid.plan-month .bk-full { min-height: 26px; }
+.plan-grid.plan-month .cell-over-badge { font-size: 9px; padding: 0 3px; }
+
+/* ── „Wann verplant": Buchungen mit Datum, Klick springt ins Raster ── */
+.kpi-click {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.kpi-click:hover:not(:disabled) { border-color: var(--accent); }
+.kpi-click:disabled { cursor: default; }
+.kpi-caret { font-size: 10px; color: var(--accent); }
+.kpi-open { border-color: var(--accent); background: #f7f8ff; }
+
+.team-row-click {
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+.team-row-click:hover { border-color: var(--accent); }
+.team-row-click.is-open { border-color: var(--accent); background: #f7f8ff; }
+
+.pw-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 130px auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.pw-row:hover:not(:disabled) { border-color: var(--accent); background: #f7f8ff; }
+.pw-row:disabled { cursor: default; }
+.pw-date { font-size: 14px; font-weight: 600; }
+.pw-name { font-size: 13px; color: var(--muted); }
+.pw-days { font-size: 13px; color: var(--muted); text-align: right; }
+.pw-go { font-size: 12px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .pw-row { grid-template-columns: 1fr auto; }
+  .pw-name { grid-column: 1; }
+  .pw-days { grid-column: 2; }
+  .pw-go { grid-column: 1 / -1; }
 }

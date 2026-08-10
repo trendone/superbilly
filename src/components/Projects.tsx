@@ -24,7 +24,7 @@ import {
   type ProjectLite,
 } from '../lib/milestones'
 import MilestoneForm from './MilestoneForm'
-import ProjectPlanGrid from './ProjectPlanGrid'
+import ProjectPlanGrid, { type PlanFocus } from './ProjectPlanGrid'
 
 const eur = new Intl.NumberFormat('de-DE', {
   style: 'currency',
@@ -38,6 +38,12 @@ const dateFmt = new Intl.DateTimeFormat('de-DE', {
 })
 function fmtDate(iso: string | null): string {
   return iso ? dateFmt.format(new Date(`${iso}T00:00:00`)) : '—'
+}
+const weekdayFmt = new Intl.DateTimeFormat('de-DE', { weekday: 'short' })
+/** Zeitraum einer Buchung: Einzeltage mit Wochentag, Spannen als von–bis. */
+function fmtBookingRange(start: string, end: string): string {
+  if (start === end) return `${weekdayFmt.format(new Date(`${start}T00:00:00`))}, ${fmtDate(start)}`
+  return `${fmtDate(start)} – ${fmtDate(end)}`
 }
 
 export default function Projects({ isAdmin = false }: { isAdmin?: boolean }) {
@@ -262,6 +268,10 @@ export function ProjectDetailView({
   const [msAdding, setMsAdding] = useState(false)
   const [msEditing, setMsEditing] = useState<string | null>(null)
   const [linking, setLinking] = useState(false)
+  // „Wann verplant"-Liste: null = zu, 'alle' = alle, sonst employee_id.
+  const [plannedFilter, setPlannedFilter] = useState<string | null>(null)
+  // Sprungziel fürs Schnellplanungsraster (Klick auf eine Buchung der Liste).
+  const [focus, setFocus] = useState<PlanFocus | null>(null)
 
   function load() {
     fetchProjectDetail(projectId)
@@ -289,6 +299,30 @@ export function ProjectDetailView({
   }, [detail, empName])
 
   const totalPlanned = perEmp.reduce((s, e) => s + e.days, 0)
+
+  // Einzelne Buchungen chronologisch – beantwortet „wo stecken die X Tage?".
+  // `detail.bookings` enthält alle Buchungen des Projekts (kein Zeitfilter),
+  // auch solche weit außerhalb des Schnellplanungs-Fensters.
+  const plannedList = useMemo(() => {
+    return (detail?.bookings ?? [])
+      .map((b) => ({
+        ...b,
+        name: empName.get(b.employee_id) ?? '—',
+        days: Math.round(workingDaysBetween(b.start_date, b.end_date) * Number(b.budget) * 10) / 10,
+      }))
+      .sort(
+        (a, b) =>
+          a.start_date.localeCompare(b.start_date) || a.name.localeCompare(b.name, 'de'),
+      )
+  }, [detail, empName])
+
+  const plannedShown = useMemo(
+    () =>
+      plannedFilter && plannedFilter !== 'alle'
+        ? plannedList.filter((b) => b.employee_id === plannedFilter)
+        : plannedList,
+    [plannedList, plannedFilter],
+  )
 
   const msSums = useMemo(() => {
     let offen = 0,
@@ -504,11 +538,21 @@ export function ProjectDetailView({
             </div>
           )}
         </div>
-        <div className={`kpi${over ? ' kpi-alert' : ''}`}>
-          <div className="kpi-label">Verplant</div>
+        <button
+          type="button"
+          className={`kpi kpi-click${over ? ' kpi-alert' : ''}${
+            plannedFilter === 'alle' ? ' kpi-open' : ''
+          }`}
+          onClick={() => setPlannedFilter((f) => (f === 'alle' ? null : 'alle'))}
+          title="Zeigt, wann diese Tage verplant sind"
+          disabled={plannedList.length === 0}
+        >
+          <div className="kpi-label">
+            Verplant {plannedList.length > 0 && <span className="kpi-caret">▾</span>}
+          </div>
           <div className="kpi-val">{totalPlanned} Tage</div>
           {pct != null && <div className="kpi-sub">{pct}% des Budgets</div>}
-        </div>
+        </button>
         <div className="kpi">
           <div className="kpi-label">Getrackt (mite)</div>
           <div className="kpi-val">{hasMite ? `${trackedDays} Tage` : '—'}</div>
@@ -551,7 +595,13 @@ export function ProjectDetailView({
         ) : (
           <div className="ms-list">
             {perEmp.map((e) => (
-              <div key={e.id} className="team-row">
+              <button
+                key={e.id}
+                type="button"
+                className={`team-row team-row-click${plannedFilter === e.id ? ' is-open' : ''}`}
+                onClick={() => setPlannedFilter((f) => (f === e.id ? null : e.id))}
+                title={`Zeigt, wann ${e.name} auf diesem Projekt verplant ist`}
+              >
                 <span className="team-name">{e.name}</span>
                 <span className="team-days">{e.days} Tage verplant</span>
                 <div className="cap-bar">
@@ -559,11 +609,22 @@ export function ProjectDetailView({
                     style={{ width: `${totalPlanned ? (e.days / totalPlanned) * 100 : 0}%` }}
                   />
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </section>
+
+      {plannedFilter && (
+        <PlannedWhenList
+          items={plannedShown}
+          filtered={plannedFilter !== 'alle'}
+          canJump={!p.is_system}
+          onShowAll={() => setPlannedFilter('alle')}
+          onClose={() => setPlannedFilter(null)}
+          onPick={(iso) => setFocus((f) => ({ iso, nonce: (f?.nonce ?? 0) + 1 }))}
+        />
+      )}
 
       {/* Schnellplanung: Tage direkt auf dieses Projekt verplanen (ohne Modal). */}
       {!p.is_system && (
@@ -573,6 +634,7 @@ export function ProjectDetailView({
           projectColor={p.color}
           employees={detail.employees}
           initialEmployeeIds={perEmp.map((e) => e.id)}
+          focus={focus}
           onChanged={load}
         />
       )}
@@ -690,6 +752,82 @@ export function ProjectDetailView({
         )}
       </section>
     </div>
+  )
+}
+
+// ---------- „Wann verplant": Buchungen mit Datum ----------
+
+/** Eine Buchung, angereichert um Mitarbeitername und Tagessumme. */
+export interface PlannedEntry {
+  employee_id: string
+  start_date: string
+  end_date: string
+  budget: number
+  name: string
+  days: number
+}
+
+/**
+ * Zeigt, WANN die verplanten Tage eines Projekts liegen. Antwort auf den Fall
+ * „Projekt meldet 1 verplanten Tag, im Raster ist er nicht zu finden" – das
+ * Schnellplanungsraster zeigt nur ein Fenster, diese Liste alle Buchungen.
+ * Ein Klick blättert das Raster auf den Tag.
+ */
+export function PlannedWhenList({
+  items,
+  filtered,
+  canJump,
+  onShowAll,
+  onClose,
+  onPick,
+}: {
+  items: PlannedEntry[]
+  /** Liste ist auf eine:n Mitarbeitende:n eingeschränkt. */
+  filtered: boolean
+  /** Sprung ins Raster möglich (bei System-Kategorien gibt es keins). */
+  canJump: boolean
+  onShowAll: () => void
+  onClose: () => void
+  onPick: (iso: string) => void
+}) {
+  return (
+    <section className="ms-group planned-when">
+      <h3 className="ms-group-title">
+        Wann verplant
+        <span className="ms-count">{items.length}</span>
+        {filtered && (
+          <button className="btn-ghost ms-add-btn" onClick={onShowAll}>
+            Alle Mitarbeitenden
+          </button>
+        )}
+        <button className={`btn-ghost${filtered ? '' : ' ms-add-btn'}`} onClick={onClose}>
+          × Schließen
+        </button>
+      </h3>
+      {items.length === 0 ? (
+        <p className="hint">Keine Buchungen.</p>
+      ) : (
+        <div className="ms-list">
+          {items.map((b, i) => (
+            <button
+              key={`${b.employee_id}-${b.start_date}-${i}`}
+              type="button"
+              className="pw-row"
+              disabled={!canJump}
+              onClick={() => onPick(b.start_date)}
+            >
+              <span className="pw-date">{fmtBookingRange(b.start_date, b.end_date)}</span>
+              <span className="pw-name">{b.name}</span>
+              <span className="pw-days">
+                {b.days} {b.days === 1 ? 'Tag' : 'Tage'}
+                {Number(b.budget) === 0.5 ? ' (½/Tag)' : ''}
+              </span>
+              {canJump && <span className="pw-go">im Raster zeigen →</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
