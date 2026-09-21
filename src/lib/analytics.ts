@@ -522,7 +522,9 @@ function statForMonth(emp: Employee, data: AnalyticsData, m: MonthWindow): Month
     if (dow >= 1 && dow <= 5 && !holidayName(iso)) {
       // Ein voller Tag = 1,0 für alle; Teilzeit wird über als „Frei" geplante
       // Tage abgebildet (Abwesenheit), nicht über die Wochenstunden.
-      availDaysFTE += 1
+      // Einzige Ausnahme: 0 Wochenstunden (Periode) = ausgeschieden → keine
+      // Kapazität ab diesem Datum; vorhandene Buchungen zählen trotzdem.
+      if (weeklyHoursForDate(emp, data.hoursPeriods, iso) > 0) availDaysFTE += 1
       for (const b of monthBookings) {
         if (b.start_date > iso || b.end_date < iso) continue
         const p = projById.get(b.project_id)

@@ -7,6 +7,7 @@ import {
   projectStats,
   summarize,
   teamKpis,
+  weeklyHoursForDate,
   yearWindow,
   KEYNOTE_KTR,
   STANDARD_DAY_RATE,
@@ -16,6 +17,7 @@ import {
   type ProjectStat,
 } from '../lib/analytics'
 import { supabase } from '../lib/supabase'
+import { toISODate } from '../lib/dates'
 
 const eur = new Intl.NumberFormat('de-DE', {
   style: 'currency',
@@ -697,7 +699,10 @@ function EmployeesView({
                     <tr key={emp.id}>
                       <td className="heat-name">
                         {emp.name}
-                        <div className="dim">{emp.weekly_hours} h</div>
+                        {(() => {
+                          const h = weeklyHoursForDate(emp, data.hoursPeriods, toISODate(new Date()))
+                          return <div className="dim">{h > 0 ? `${h} h` : 'ausgeschieden'}</div>
+                        })()}
                       </td>
                       {stats.map((s) => {
                         const c = heatColor(s.pct, s.netAvailDays > 0)

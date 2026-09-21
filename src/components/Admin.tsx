@@ -306,7 +306,7 @@ function EmpRow({
         <tr>
           <td colSpan={7}>
             <div className="admin-periods">
-              <div className="dim">Abweichende Wochenstunden ab Datum (überschreiben die Basis ab dort):</div>
+              <div className="dim">Abweichende Wochenstunden ab Datum (überschreiben die Basis ab dort). Informativ – Kapazität bleibt 1 Tag = 1,0, Teilzeit über „Frei"-Tage. Ausnahme: <b>0 h</b> = ausgeschieden ab diesem Datum, keine Kapazität mehr in der Auswertung.</div>
               {periods.length === 0 && <div className="dim">Keine abweichenden Zeiträume.</div>}
               {periods.map((p) => (
                 <div key={p.id} className="admin-period-row">
