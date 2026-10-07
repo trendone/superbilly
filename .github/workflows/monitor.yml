@@ -38,8 +38,9 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          resp=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v6/deployments?limit=1&projectId=superbilly&target=production")
+          resp=$(curl -s --retry 3 --retry-all-errors --retry-delay 5 --max-time 30 \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?limit=1&projectId=superbilly&target=production" || echo "{}")
           state=$(printf '%s' "$resp" | jq -r '.deployments[0].readyState // "UNKNOWN"')
           echo "state=$state" >> "$GITHUB_OUTPUT"
 
@@ -57,11 +58,13 @@ jobs:
           SQL
           )
           body=$(jq -n --arg q "$query" '{query: $q}')
-          resp=$(curl -s -X POST \
+          # Retries gegen transiente TLS-/Netzwerkfehler (z.B. curl exit 35); scheitert es
+          # trotzdem, ist resp null -> total=-1 -> sauberer Alarm statt abgebrochenem Job.
+          resp=$(curl -s --retry 3 --retry-all-errors --retry-delay 5 --max-time 30 -X POST \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
             "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
-            -d "$body")
+            -d "$body" || echo "null")
           printf 'response: %s\n' "$resp"
           total=$(printf '%s' "$resp" | jq -r '.[0].result.total_recent // -1')
           bad=$(printf '%s' "$resp" | jq -r '.[0].result.bad_recent // -1')
