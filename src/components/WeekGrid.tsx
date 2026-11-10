@@ -26,6 +26,13 @@ const TILE = {
 } as const
 const KAMINROT_CATEGORIES = ['Frei', 'Kurzarbeit', 'Urlaub', 'Krank']
 
+// Kompakte Kacheln: Rechtsformen kosten Platz und unterscheiden Projekte nicht –
+// in der einzeiligen Kachel weglassen (voller Name bleibt im Tooltip).
+const LEGAL_FORMS = /\s+(GmbH\s*&\s*Co\.?\s*KG|gGmbH|GmbH|mbH|AG|SE|KG|KGaA|OHG|UG(\s*\(haftungsbeschränkt\))?|e\.\s?V\.|Inc\.?|Ltd\.?|LLC)(?=[\s,–-]|$)/g
+function compactName(name: string): string {
+  return name.replace(LEGAL_FORMS, '').replace(/\s{2,}/g, ' ').trim() || name
+}
+
 function tileColor(p: Project | undefined, isWorkshop: boolean): string {
   if (isWorkshop) return TILE.workshop
   if (!p) return TILE.none
@@ -46,6 +53,23 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
   const [loading, setLoading] = useState(false)
   const [sel, setSel] = useState<Selection | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
+  // Darstellungsdichte: „kompakt" = einzeilige Kacheln (Standard), damit ein kleines
+  // Team ohne Scrollen ins Bild passt; „komfort" = bisherige zweizeilige Kacheln.
+  const [compact, setCompact] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('planDensity') !== 'comfort'
+    } catch {
+      return true
+    }
+  })
+  function setDensity(c: boolean) {
+    setCompact(c)
+    try {
+      localStorage.setItem('planDensity', c ? 'compact' : 'comfort')
+    } catch {
+      /* ohne Storage nur für diese Sitzung */
+    }
+  }
 
   // Drag-Status außerhalb des Render-Zyklus (vermeidet veraltete Closures).
   const drag = useRef<{ empId: string; anchor: string; moved: boolean } | null>(null)
@@ -256,7 +280,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
       : `KW ${isoWeek(monday)}–${isoWeek(lastMonday)} · ${formatDay(days[0])}–${formatDay(days[days.length - 1])}`
 
   return (
-    <div className="grid-wrap">
+    <div className={`grid-wrap${weeks === 2 ? ' grid-wrap-wide' : ''}`}>
       <div className="week-nav">
         <button onClick={() => setMonday(addDays(monday, -7 * weeks))} title="Zurück">←</button>
         <span className="week-label">{weekLabel}</span>
@@ -268,6 +292,14 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
           </button>
           <button className={weeks === 2 ? 'active' : ''} onClick={() => setWeeks(2)}>
             2 Wochen
+          </button>
+        </span>
+        <span className="week-toggle" title="Darstellungsdichte der Buchungskacheln">
+          <button className={compact ? 'active' : ''} onClick={() => setDensity(true)}>
+            Kompakt
+          </button>
+          <button className={!compact ? 'active' : ''} onClick={() => setDensity(false)}>
+            Komfort
           </button>
         </span>
       </div>
@@ -284,7 +316,7 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
           }}
         >
         <div
-          className="grid"
+          className={`grid${compact ? ' grid-compact' : ''}`}
           style={
             {
               gridTemplateColumns: `var(--name-w, 220px) repeat(${days.length}, minmax(var(--col-min, 0px), 1fr))`,
@@ -327,7 +359,17 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
               <Fragment key={emp.id}>
                 <div className="gc emp">
                   <div className="emp-name">{emp.name}</div>
-                  <div className="emp-cap">
+                  <div
+                    className="emp-cap"
+                    title={[
+                      `${cap.productive} / ${cap.avail} Tage · ${cap.pct}%`,
+                      cap.absence > 0 ? `${cap.absence} T abwesend` : null,
+                      cap.admin > 0 ? `${cap.admin} T Admin` : null,
+                      cap.reserved > 0 ? `${cap.reserved} T vorgemerkt` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  >
                     {cap.productive} / {cap.avail} Tage · {cap.pct}%
                     {cap.absence > 0 && <span className="emp-abs"> · {cap.absence} T abw.</span>}
                     {cap.admin > 0 && <span className="emp-abs"> · {cap.admin} T Admin</span>}
@@ -364,6 +406,16 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
                       const p = projById.get(b.project_id)
                       const color = tileColor(p, b.is_workshop)
                       const reserved = isReserved(p)
+                      const half = Number(b.budget) === 0.5
+                      const fullTitle = [
+                        p?.name ?? '—',
+                        reserved ? `vorgemerkt (${p?.status})` : null,
+                        half ? '½ Tag' : '1 Tag',
+                        b.note || null,
+                        b.locked ? 'gesperrt' : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
                       return (
                         <div
                           key={b.id}
@@ -373,24 +425,27 @@ export default function WeekGrid({ initialMonday }: { initialMonday?: Date | nul
                             background: `${color}22`,
                             ['--bk-hatch' as string]: color,
                           }}
-                          title={
-                            reserved
-                              ? `${p?.name ?? ''} — vorgemerkt (${p?.status})`
-                              : b.locked
-                                ? `${p?.name ?? ''} (gesperrt)`
-                                : p?.name
-                          }
+                          title={fullTitle}
                           onClick={(e) => {
                             e.stopPropagation()
                             openEdit(b, emp.name)
                           }}
                         >
-                          <div className="bk-name">{p?.name ?? '—'}</div>
-                          <div className="bk-sub">
-                            {reserved
-                              ? 'vorgemerkt'
-                              : (b.note ?? (Number(b.budget) === 0.5 ? '½ Tag' : '1 Tag'))}
+                          <div className="bk-name">
+                            {compact ? compactName(p?.name ?? '—') : (p?.name ?? '—')}
                           </div>
+                          {compact ? (
+                            (half || b.note) && (
+                              <span className="bk-tag">
+                                {half ? '½' : ''}
+                                {b.note ? <span className="bk-note-dot" aria-label="Notiz">•</span> : null}
+                              </span>
+                            )
+                          ) : (
+                            <div className="bk-sub">
+                              {reserved ? 'vorgemerkt' : (b.note ?? (half ? '½ Tag' : '1 Tag'))}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
